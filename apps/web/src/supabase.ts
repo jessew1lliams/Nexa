@@ -10,8 +10,8 @@ export const supabase = supabaseEnabled
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        flowType: "pkce",
-        detectSessionInUrl: false
+        flowType: "implicit",
+        detectSessionInUrl: true
       }
     })
   : null;
