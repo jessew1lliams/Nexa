@@ -541,8 +541,7 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     throw new Error("Supabase клиент не настроен.");
   }
 
-  await ensureSupabaseProfile(user);
-  await ensureDefaultMemberships(user.id);
+  const [profile] = await Promise.all([ensureSupabaseProfile(user), ensureDefaultMemberships(user.id)]);
 
   const { data: ownMemberships, error: ownMembershipError } = await supabase
     .from("chat_members")
@@ -555,7 +554,6 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
 
   const chatIds = (ownMemberships ?? []).map((row) => String(row.chat_id));
   if (!chatIds.length) {
-    const profile = await ensureSupabaseProfile(user);
     return buildWorkspace({
       currentUserId: profile.id,
       users: [profile],
@@ -596,6 +594,9 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
   }
 
   const users = ((profileRows as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+  if (!users.some((entry) => entry.id === profile.id)) {
+    users.unshift(profile);
+  }
   const memberIdsByChat = ((memberRows as SupabaseChatMemberRow[] | null) ?? []).reduce<Record<string, string[]>>((acc, row) => {
     const chatId = String(row.chat_id);
     acc[chatId] = [...(acc[chatId] ?? []), String(row.user_id)];
@@ -649,6 +650,7 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438, Supabase \u0438 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u044f \u0441\u0435\u0440\u0432\u0438\u0441\u0430.");
   const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>("offline");
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [signMode, setSignMode] = useState<SignMode>(supabaseEnabled ? "supabase" : "demo");
@@ -713,9 +715,10 @@ function App() {
         const authCode = readAuthCallbackCode();
 
         if (authCode) {
+          setLoadingStatus("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram.");
           const { data: exchangeData, error: exchangeError } = await withTimeout(
             client.auth.exchangeCodeForSession(authCode),
-            12000,
+            30000,
             "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
           );
 
@@ -731,12 +734,13 @@ function App() {
         }
 
         if (!session) {
+          setLoadingStatus("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438.");
           const {
             data: sessionData,
             error: sessionError
           } = await withTimeout(
             client.auth.getSession(),
-            8000,
+            20000,
             "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a Supabase \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
           );
           if (sessionError) {
@@ -751,9 +755,10 @@ function App() {
         }
 
         if (session?.user) {
+          setLoadingStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
           const nextWorkspace = await withTimeout(
             fetchSupabaseWorkspace(session.user),
-            8000,
+            35000,
             "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
           );
           if (!ignore) {
@@ -775,8 +780,8 @@ function App() {
     }
     bootstrapSupabase();
 
-    const { data: authListener } = client.auth.onAuthStateChange(async (_event, session) => {
-      if (ignore) {
+    const { data: authListener } = client.auth.onAuthStateChange(async (event, session) => {
+      if (ignore || event === "INITIAL_SESSION") {
         return;
       }
 
@@ -788,12 +793,17 @@ function App() {
       }
 
       try {
-        const nextWorkspace = await withTimeout(fetchSupabaseWorkspace(session.user), 6000, "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438.");
+        setLoadingStatus("\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
+        const nextWorkspace = await withTimeout(
+          fetchSupabaseWorkspace(session.user),
+          35000,
+          "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+        );
         if (!ignore) {
           setWorkspace(nextWorkspace);
           setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
           setError(null);
-          setNotice("Supabase-сессия обновлена. Теперь чат общий для всех, кто вошёл через сайт.");
+          setNotice(null);
         }
       } catch (loadError) {
         if (!ignore) {
@@ -1039,9 +1049,26 @@ function App() {
     return (
       <div className="center-state">
         <div className="loading-card panel">
-          <span className="eyebrow">Nexa запускается</span>
-          <h1>Запуск Nexa</h1>
-          <p>Проверка локальной сессии, Supabase и состояния сервиса.</p>
+          <div className="loading-card-shell">
+            <div className="loading-copy">
+              <span className="eyebrow">{"\u004e\u0065\u0078\u0061 \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442\u0441\u044f"}</span>
+              <h1>{"\u0417\u0430\u043f\u0443\u0441\u043a Nexa"}</h1>
+              <p>{loadingStatus}</p>
+            </div>
+
+            <div className="loading-visual" aria-hidden="true">
+              <div className="loading-orbit">
+                <span className="loading-orb orb-a" />
+                <span className="loading-orb orb-b" />
+                <span className="loading-orb orb-c" />
+              </div>
+              <div className="loading-bars">
+                <span className="loading-bar bar-a" />
+                <span className="loading-bar bar-b" />
+                <span className="loading-bar bar-c" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
