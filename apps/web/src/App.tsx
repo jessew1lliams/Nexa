@@ -12,7 +12,6 @@ import type {
   SupabaseChatRow,
   SupabaseMessageRow,
   SupabaseProfileRow,
-  UserRole,
   WorkspaceData
 } from "./types";
 
@@ -20,6 +19,7 @@ const demoSessionKey = "nexa-demo-session-v1";
 const demoMessagesKey = "nexa-demo-messages-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
+const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
   live: "онлайн",
@@ -27,11 +27,6 @@ const connectionCopy = {
   offline: "офлайн",
   local: "локально"
 } as const;
-const roleCopy: Record<UserRole, string> = {
-  student: "студент",
-  curator: "куратор",
-  teacher: "преподаватель"
-};
 const chatKindCopy: Record<ChatKind, string> = {
   group: "группа",
   direct: "личный чат",
@@ -40,35 +35,35 @@ const chatKindCopy: Record<ChatKind, string> = {
 const demoUsers: AppUser[] = [
   {
     id: "demo-1",
-    name: "Ксюша Никифорова",
-    username: "ksushan",
+    name: "Твой аккаунт",
+    username: "nexa_user",
     role: "student",
     accentColor: "#2795FF",
-    bio: "Староста группы и первый тестовый пользователь Nexa."
+    bio: "Личный профиль для знакомства с интерфейсом Nexa."
   },
   {
     id: "demo-2",
-    name: "Илья Соколов",
-    username: "ilya_net",
+    name: "Староста группы",
+    username: "group_lead",
     role: "student",
     accentColor: "#F77F5A",
-    bio: "Помогает с лабами и отвечает даже ночью."
-  },
-  {
-    id: "demo-3",
-    name: "Марина Волкова",
-    username: "marina_v",
-    role: "student",
-    accentColor: "#47B39C",
     bio: "Следит, чтобы важные сообщения не терялись."
   },
   {
+    id: "demo-3",
+    name: "Одногруппник",
+    username: "student_room",
+    role: "student",
+    accentColor: "#47B39C",
+    bio: "Всегда на связи в общем чате."
+  },
+  {
     id: "demo-4",
-    name: "Анна Сергеева",
-    username: "curator_anna",
+    name: "Куратор",
+    username: "curator",
     role: "curator",
     accentColor: "#6D83F2",
-    bio: "Куратор и источник всех организационных объявлений."
+    bio: "Публикует объявления и важные новости."
   }
 ];
 const demoChats: ChatRecord[] = [
@@ -320,7 +315,7 @@ function buildDemoWorkspace(userId: string) {
     memberIdsByChat: demoMembersByChat,
     messagesByChat: loadDemoMessages(),
     mode: "demo",
-    syncLabel: "GitHub Pages открыт, но общая база не подключена. Сейчас это демо на этом устройстве.",
+    syncLabel: "Лёгкий ознакомительный режим Nexa.",
     universityName
   });
 }
@@ -428,7 +423,7 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
       memberIdsByChat: {},
       messagesByChat: {},
       mode: "supabase",
-      syncLabel: "Supabase подключён. Добавь SQL-схему и общий чат, чтобы люди видели друг друга.",
+      syncLabel: "Аккаунт готов. Чаты появятся здесь, как только они будут доступны.",
       universityName
     });
   }
@@ -479,7 +474,7 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     memberIdsByChat,
     messagesByChat,
     mode: "supabase",
-    syncLabel: "GitHub Pages открыт для сайта, а сообщения синхронизируются через Supabase.",
+    syncLabel: "Сообщения синхронизируются между устройствами.",
     universityName
   });
 }
@@ -739,7 +734,7 @@ function App() {
     setSelectedChatId(nextWorkspace.chats[0]?.id ?? null);
     setConnectionLabel("local");
     setError(null);
-    setNotice("Ты вошёл в демо-режиме. На GitHub Pages сайт откроется, но общая база появится после подключения Supabase.");
+    setNotice("Добро пожаловать в Nexa.");
   }
 
   async function handleLogout() {
@@ -824,30 +819,19 @@ function App() {
     return (
       <div className="login-shell">
         <section className="brand-card panel">
-          <span className="eyebrow">github pages + supabase</span>
+          <span className="eyebrow">private campus messenger</span>
           <h1>Nexa</h1>
           <p className="brand-copy">
-            Теперь `Nexa` можно открыть как обычный сайт через GitHub. Сам интерфейс живёт на GitHub Pages,
-            а общую переписку для всех устройств можно хранить в Supabase.
+            Закрытый университетский мессенджер с аккуратным интерфейсом, быстрыми чатами и пространством только для своих.
           </p>
-          <div className="pill-row">
-            <span className="soft-pill">сайт через GitHub</span>
-            <span className="soft-pill">общая база в Supabase</span>
-            <span className="soft-pill">автообновления после push</span>
-          </div>
-          <div className="feature-grid">
-            <article className="feature-card">
-              <h2>Как ChanceMusic</h2>
-              <p>Сам сайт можно открывать прямо через GitHub Pages без отдельного backend-хостинга.</p>
-            </article>
-            <article className="feature-card">
-              <h2>Живая база</h2>
-              <p>Если подключить Supabase, сообщения будут общими для всех, а не только у тебя на устройстве.</p>
-            </article>
-            <article className="feature-card">
-              <h2>Автообновление</h2>
-              <p>После каждого `push` GitHub может сам пересобирать и выкатывать новую версию сайта.</p>
-            </article>
+          <div className="hero-note">
+            <strong>Открытый код</strong>
+            <p>
+              Весь код проекта лежит на GitHub, поэтому любой может сам посмотреть, как устроен сайт, и проверить его безопасность.
+            </p>
+            <a className="hero-link" href={githubRepoUrl} target="_blank" rel="noreferrer">
+              Открыть репозиторий
+            </a>
           </div>
         </section>
 
@@ -855,20 +839,20 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Если Supabase уже настроен, используй общий вход. Если нет, можешь открыть демо-режим и проверить сайт прямо сейчас.</p>
+            <p>Можно войти в аккаунт или быстро открыть демо-версию, чтобы сразу посмотреть интерфейс.</p>
           </div>
 
           <div className="auth-toggle-row">
-            <button type="button" className={`toggle-pill ${signMode === "supabase" ? "is-active" : ""}`} onClick={() => setSignMode("supabase")} disabled={!supabaseEnabled}>Supabase</button>
-            <button type="button" className={`toggle-pill ${signMode === "demo" ? "is-active" : ""}`} onClick={() => setSignMode("demo")}>Демо</button>
+            <button type="button" className={`toggle-pill ${signMode === "supabase" ? "is-active" : ""}`} onClick={() => setSignMode("supabase")} disabled={!supabaseEnabled}>Аккаунт</button>
+            <button type="button" className={`toggle-pill ${signMode === "demo" ? "is-active" : ""}`} onClick={() => setSignMode("demo")}>Быстрый вход</button>
           </div>
 
           {signMode === "supabase" ? (
             <div className="auth-form">
               {!supabaseEnabled ? (
                 <div className="helper-card">
-                  <strong>Supabase ещё не подключён.</strong>
-                  <p>Добавь `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` в GitHub Secrets и локальный `.env`, затем включи GitHub Pages deployment.</p>
+                  <strong>Общий вход пока недоступен.</strong>
+                  <p>Пока можно спокойно открыть Nexa через быстрый вход и посмотреть интерфейс без лишней настройки.</p>
                 </div>
               ) : null}
 
@@ -888,20 +872,16 @@ function App() {
               <input className="field" placeholder="Пароль" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
 
               <button type="button" className="primary-button" onClick={authScreen === "login" ? handleSupabaseLogin : handleSupabaseSignup} disabled={isBusy || !supabaseEnabled}>
-                {authScreen === "login" ? "Войти через Supabase" : "Создать аккаунт"}
+                {authScreen === "login" ? "Войти" : "Создать аккаунт"}
               </button>
             </div>
           ) : (
-            <div className="dev-user-list">
-              {demoUsers.map((user) => (
-                <button type="button" key={user.id} className="user-card" onClick={() => handleDemoLogin(user.id)}>
-                  <span className="avatar" style={{ backgroundColor: user.accentColor }}>{getInitials(user.name)}</span>
-                  <span className="user-copy">
-                    <strong>{user.name}</strong>
-                    <span>@{user.username} · {roleCopy[user.role]}</span>
-                  </span>
-                </button>
-              ))}
+            <div className="helper-card demo-entry">
+              <strong>Быстрый вход</strong>
+              <p>Открой Nexa без лишних экранов и просто посмотри, как выглядит мессенджер.</p>
+              <button type="button" className="primary-button" onClick={() => handleDemoLogin("demo-1")} disabled={isBusy}>
+                Открыть Nexa
+              </button>
             </div>
           )}
 
@@ -924,12 +904,12 @@ function App() {
         </div>
 
         <div className="search-shell">
-          <input className="search-input" value="GitHub Pages / Supabase messenger" readOnly />
+          <input className="search-input" value="Приватное пространство Nexa" readOnly />
         </div>
 
         <div className="sidebar-pills">
           <span className="soft-pill">{workspace.universityName}</span>
-          <span className="soft-pill">{workspace.mode === "supabase" ? "общая база" : "демо-режим"}</span>
+          <span className="soft-pill">{workspace.mode === "supabase" ? "живой режим" : "предпросмотр"}</span>
         </div>
 
         <div className="chat-list">
@@ -1016,17 +996,17 @@ function App() {
         </div>
 
         <div className="detail-section">
-          <span className="eyebrow">синхронизация</span>
+          <span className="eyebrow">пространство nexa</span>
           <p>{workspace.syncLabel}</p>
-          <p>{workspace.mode === "supabase" ? "Этот режим подходит для общей переписки между разными людьми и устройствами." : "Этот режим нужен, чтобы сайт открывался уже сейчас, даже до подключения общей базы."}</p>
+          <p>{workspace.mode === "supabase" ? "Переписка остаётся актуальной на разных устройствах." : "Это спокойный режим для знакомства с интерфейсом и общим стилем приложения."}</p>
         </div>
 
         <div className="detail-section">
-          <span className="eyebrow">в этой версии</span>
+          <span className="eyebrow">о проекте</span>
           <ul className="detail-list">
-            <li>Сайт готов для GitHub Pages.</li>
-            <li>Для общей базы предусмотрен Supabase.</li>
-            <li>После push GitHub может обновлять сайт автоматически.</li>
+            <li>Лаконичный интерфейс без лишнего шума.</li>
+            <li>Чаты и сообщения собраны в одном приватном пространстве.</li>
+            <li>Весь код проекта доступен на GitHub.</li>
           </ul>
         </div>
 
