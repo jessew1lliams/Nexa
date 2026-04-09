@@ -1,0 +1,15 @@
+{
+  "name": "nexa",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace @nexa/server",
+    "dev:web": "npm run dev --workspace @nexa/web",
+    "build": "npm run build --workspace @nexa/server && npm run build --workspace @nexa/web",
+    "check": "npm run check --workspace @nexa/server && npm run check --workspace @nexa/web"
+  }
+}
