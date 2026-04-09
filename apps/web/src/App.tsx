@@ -205,6 +205,10 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     return "\u0412\u0445\u043e\u0434 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b\u0441\u044f. \u041d\u0430\u0436\u043c\u0438 \u00ab\u0412\u043e\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\u00bb \u0435\u0449\u0451 \u0440\u0430\u0437.";
   }
 
+  if (normalized.includes("update your telegram app") || normalized.includes("confirm the login request from the website")) {
+    return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0441\u0442\u0430\u0440\u0430\u044f \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0432\u0445\u043e\u0434\u0430. \u0415\u0441\u043b\u0438 \u0445\u043e\u0447\u0435\u0448\u044c \u0432\u0445\u043e\u0434 \u0431\u0435\u0437 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f, \u044f \u043f\u0435\u0440\u0435\u0432\u0435\u0434\u0443 Nexa \u043d\u0430 \u0434\u0440\u0443\u0433\u043e\u0439 \u0442\u0438\u043f Telegram-\u0432\u0445\u043e\u0434\u0430.";
+  }
+
   if (normalized.includes("failed to fetch") || normalized.includes("network")) {
     return "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437 \u0447\u0435\u0440\u0435\u0437 \u043c\u0438\u043d\u0443\u0442\u0443.";
   }
@@ -224,6 +228,28 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   return rawMessage;
 }
 
+function readAuthCallbackMessage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
+  const rawMessage =
+    searchParams.get("error_description") ??
+    searchParams.get("error") ??
+    hashParams.get("error_description") ??
+    hashParams.get("error");
+
+  if (!rawMessage) {
+    return null;
+  }
+
+  return formatUiErrorMessage(
+    new Error(rawMessage),
+    "\u0412\u0445\u043e\u0434 \u0447\u0435\u0440\u0435\u0437 Telegram \u043d\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0441\u044f. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."
+  );
+}
 function getTelegramIdentityData(user: SupabaseAuthUser) {
   const normalizedProviderId = telegramProviderId.replace(/^custom:/, "");
   const identity = (user.identities ?? []).find(
@@ -581,6 +607,7 @@ function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorVisible, setErrorVisible] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -602,6 +629,38 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const callbackMessage = readAuthCallbackMessage();
+    if (!callbackMessage) {
+      return;
+    }
+
+    setError(callbackMessage);
+    window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+  }, []);
+
+  useEffect(() => {
+    if (!error) {
+      setErrorVisible(false);
+      return;
+    }
+
+    setErrorVisible(true);
+
+    const hideTimer = window.setTimeout(() => {
+      setErrorVisible(false);
+    }, 10000);
+
+    const clearTimer = window.setTimeout(() => {
+      setError((current) => (current === error ? null : current));
+    }, 10600);
+
+    return () => {
+      window.clearTimeout(hideTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [error]);
+
+  useEffect(() => {
     if (!supabaseEnabled || !supabase) {
       setIsLoading(false);
       return;
@@ -612,17 +671,20 @@ function App() {
 
     async function bootstrapSupabase() {
       try {
-        const { data, error: userError } = await client.auth.getUser();
-        if (userError) {
-          throw new Error(userError.message);
+        const {
+          data: { session },
+          error: sessionError
+        } = await client.auth.getSession();
+        if (sessionError) {
+          throw new Error(sessionError.message);
         }
 
         if (ignore) {
           return;
         }
 
-        if (data.user) {
-          const nextWorkspace = await fetchSupabaseWorkspace(data.user);
+        if (session?.user) {
+          const nextWorkspace = await fetchSupabaseWorkspace(session.user);
           if (!ignore) {
             setWorkspace(nextWorkspace);
             setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
@@ -754,11 +816,12 @@ function App() {
 
   async function handleTelegramLogin() {
     if (!supabase) {
-      setError("Сайт ещё не подключён к Supabase.");
+      setError("\u0421\u0430\u0439\u0442 \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0451\u043d \u043a Supabase.");
       return;
     }
 
     setIsBusy(true);
+    setError(null);
     try {
       const redirectTo = `${window.location.origin}${window.location.pathname}`;
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -775,7 +838,10 @@ function App() {
 
       if (data?.url) {
         window.location.assign(data.url);
+        return;
       }
+
+      setError("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c Telegram-\u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437.");
     } catch (oauthError) {
       setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
     } finally {
@@ -941,7 +1007,7 @@ function App() {
             </button>
           </div>
           {notice ? <p className="notice-text">{notice}</p> : null}
-          {error ? <p className="error-text">{error}</p> : null}
+          {error ? <p className={`error-text${errorVisible ? " is-visible" : ""}`}>{error}</p> : null}
         </section>
       </div>
     );
