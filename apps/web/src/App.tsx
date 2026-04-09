@@ -202,15 +202,28 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("auth session missing")) {
-    return "\u0412\u0445\u043e\u0434 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b\u0441\u044f. \u041d\u0430\u0436\u043c\u0438 \u00ab\u0412\u043e\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\u00bb \u0435\u0449\u0451 \u0440\u0430\u0437.";
+    return "\u0412\u0445\u043e\u0434 \u0447\u0435\u0440\u0435\u0437 Telegram \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b\u0441\u044f. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437.";
   }
 
   if (normalized.includes("update your telegram app") || normalized.includes("confirm the login request from the website")) {
-    return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0441\u0442\u0430\u0440\u0430\u044f \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0432\u0445\u043e\u0434\u0430. \u0415\u0441\u043b\u0438 \u0445\u043e\u0447\u0435\u0448\u044c \u0432\u0445\u043e\u0434 \u0431\u0435\u0437 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f, \u044f \u043f\u0435\u0440\u0435\u0432\u0435\u0434\u0443 Nexa \u043d\u0430 \u0434\u0440\u0443\u0433\u043e\u0439 \u0442\u0438\u043f Telegram-\u0432\u0445\u043e\u0434\u0430.";
+    return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u043d\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043f \u0432\u0445\u043e\u0434\u0430.";
+  }
+
+  if (
+    (normalized.includes("relation") && normalized.includes("does not exist")) ||
+    normalized.includes("schema cache") ||
+    normalized.includes("could not find the table") ||
+    normalized.includes("foreign key constraint")
+  ) {
+    return "\u0411\u0430\u0437\u0430 Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0430. \u041d\u0443\u0436\u043d\u043e \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c SQL-\u0441\u0445\u0435\u043c\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
+  }
+
+  if (normalized.includes("row-level security")) {
+    return "\u0414\u043e\u0441\u0442\u0443\u043f \u043a \u0442\u0430\u0431\u043b\u0438\u0446\u0430\u043c Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d.";
   }
 
   if (normalized.includes("failed to fetch") || normalized.includes("network")) {
-    return "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437 \u0447\u0435\u0440\u0435\u0437 \u043c\u0438\u043d\u0443\u0442\u0443.";
+    return "\u0421\u0432\u044f\u0437\u044c \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u043f\u043e\u0437\u0436\u0435.";
   }
 
   if (normalized.includes("invalid login credentials")) {
@@ -218,7 +231,7 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("email not confirmed")) {
-    return "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438 \u043f\u043e\u0447\u0442\u0443, \u0430 \u043f\u043e\u0442\u043e\u043c \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0432\u043e\u0439\u0442\u0438 \u0435\u0449\u0451 \u0440\u0430\u0437.";
+    return "\u041f\u043e\u0447\u0442\u0430 \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0430.";
   }
 
   if (/^[\x00-\x7F]+$/.test(rawMessage)) {
@@ -693,7 +706,7 @@ function App() {
         }
       } catch (loadError) {
         if (!ignore) {
-          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u043e\u0442\u043a\u0440\u044b\u0442\u044c Nexa \u0435\u0449\u0451 \u0440\u0430\u0437."));
+          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
         }
       } finally {
         if (!ignore) {
@@ -725,7 +738,7 @@ function App() {
         }
       } catch (loadError) {
         if (!ignore) {
-          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u0442\u044c\u0441\u044f \u0435\u0449\u0451 \u0440\u0430\u0437."));
+          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
         }
       }
     });
@@ -808,7 +821,7 @@ function App() {
       setError(null);
       setNotice("Вход выполнен. Если общий чат уже настроен в Supabase, сообщения будут общими для всех.");
     } catch (loginError) {
-      setError(formatUiErrorMessage(loginError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0439\u0442\u0438. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
+      setError(formatUiErrorMessage(loginError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0439\u0442\u0438."));
     } finally {
       setIsBusy(false);
     }
@@ -841,9 +854,9 @@ function App() {
         return;
       }
 
-      setError("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c Telegram-\u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437.");
+      setError("?? ??????? ??????? Telegram-????.");
     } catch (oauthError) {
-      setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
+      setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."));
     } finally {
       setIsBusy(false);
     }
@@ -882,7 +895,7 @@ function App() {
       setNotice("Аккаунт создан. Если в Supabase включено подтверждение email, открой письмо и подтверди вход.");
       setAuthScreen("login");
     } catch (signupError) {
-      setError(formatUiErrorMessage(signupError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
+      setError(formatUiErrorMessage(signupError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442."));
     } finally {
       setIsBusy(false);
     }
@@ -957,7 +970,7 @@ function App() {
       setDraft("");
       setError(null);
     } catch (sendError) {
-      setError(formatUiErrorMessage(sendError, "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u043e\u0441\u044c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
+      setError(formatUiErrorMessage(sendError, "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u043e\u0441\u044c."));
     } finally {
       setIsBusy(false);
     }
@@ -967,9 +980,9 @@ function App() {
     return (
       <div className="center-state">
         <div className="loading-card panel">
-          <span className="eyebrow">Nexa запускается</span>
-          <h1>Подготавливаю сайт для GitHub Pages</h1>
-          <p>Проверяю локальную сессию, Supabase и состояние твоего мессенджера.</p>
+          <span className="eyebrow">Nexa ???????????</span>
+          <h1>?????? Nexa</h1>
+          <p>???????? ????????? ??????, Supabase ? ????????? ???????.</p>
         </div>
       </div>
     );
