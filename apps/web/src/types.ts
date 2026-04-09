@@ -1,31 +1,27 @@
 export type ChatKind = "group" | "direct" | "channel";
 export type UserRole = "student" | "curator" | "teacher";
+export type RuntimeMode = "demo" | "supabase";
 
-export interface User {
+export interface AppUser {
   id: string;
-  telegramId: number;
   name: string;
   username: string;
   role: UserRole;
   accentColor: string;
   bio: string;
-  photoUrl?: string;
-  phoneNumber?: string;
+  email?: string;
 }
 
-export interface ChatSummary {
+export interface ChatRecord {
   id: string;
   title: string;
   kind: ChatKind;
-  memberIds: string[];
-  accentColor: string;
   description: string;
-  lastMessagePreview: string;
-  lastMessageAt: string | null;
-  unreadCount: number;
+  accentColor: string;
+  isDefault?: boolean;
 }
 
-export interface Message {
+export interface ChatMessage {
   id: string;
   chatId: string;
   authorId: string;
@@ -33,22 +29,56 @@ export interface Message {
   sentAt: string;
 }
 
-export interface BootstrapPayload {
-  meta: {
-    serverName: string;
-    universityName: string;
-    accessModel: string;
-    telegramEnabled: boolean;
-  };
-  currentUser: User;
-  users: User[];
-  chats: ChatSummary[];
-  messagesByChat: Record<string, Message[]>;
+export interface ChatSummary extends ChatRecord {
+  memberIds: string[];
+  lastMessagePreview: string;
+  lastMessageAt: string | null;
+  unreadCount: number;
 }
 
-export interface AuthProvidersResponse {
-  dev: boolean;
-  telegram: {
-    enabled: boolean;
-  };
+export interface WorkspaceData {
+  currentUser: AppUser;
+  users: AppUser[];
+  chatRecords: ChatRecord[];
+  memberIdsByChat: Record<string, string[]>;
+  chats: ChatSummary[];
+  messagesByChat: Record<string, ChatMessage[]>;
+  mode: RuntimeMode;
+  syncLabel: string;
+  universityName: string;
+}
+
+export interface SupabaseProfileRow {
+  id: string;
+  email: string | null;
+  full_name: string;
+  username: string;
+  role: UserRole | null;
+  accent_color: string;
+  bio: string | null;
+  created_at?: string;
+}
+
+export interface SupabaseChatRow {
+  id: string;
+  title: string;
+  kind: ChatKind;
+  description: string;
+  accent_color: string;
+  is_default: boolean | null;
+  created_at?: string;
+}
+
+export interface SupabaseChatMemberRow {
+  chat_id: string;
+  user_id: string;
+  joined_at?: string;
+}
+
+export interface SupabaseMessageRow {
+  id: string;
+  chat_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
 }

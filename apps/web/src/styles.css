@@ -699,3 +699,75 @@ button {
   font-weight: 700;
   color: var(--muted);
 }
+.field {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid rgba(42, 70, 93, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 14px 16px;
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.auth-toggle-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.compact-row {
+  margin-top: 0;
+}
+
+.toggle-pill {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(38, 149, 255, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text);
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+}
+
+.toggle-pill.is-active {
+  background: linear-gradient(135deg, rgba(38, 149, 255, 0.18), rgba(17, 114, 207, 0.08));
+  border-color: rgba(38, 149, 255, 0.32);
+}
+
+.helper-card {
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(42, 70, 93, 0.08);
+  box-shadow: var(--shadow-soft);
+}
+
+.helper-card strong,
+.helper-card p,
+.notice-text {
+  margin: 0;
+}
+
+.helper-card p,
+.notice-text {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.notice-text {
+  font-weight: 700;
+  color: var(--brand-deep);
+}
+
+.status-local {
+  color: var(--brand-deep);
+}

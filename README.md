@@ -1,122 +1,97 @@
 # Nexa
 
-`Nexa` is a private university messenger with a Telegram-inspired interface, a real backend, live updates over WebSocket, and persistent message storage.
+`Nexa` теперь подготовлен под схему как у `ChanceMusic`:
 
-## Что уже есть
+- сам сайт открывается через `GitHub Pages`
+- общие данные и сообщения можно хранить в `Supabase`
+- после каждого `push` в `main` сайт может обновляться автоматически
 
-- свой backend на `Fastify`
-- чат-интерфейс на `React + Vite`
-- realtime через `Socket.IO`
-- постоянное хранение сообщений в `SQLite`
-- заготовка входа через `Telegram`
-- один production-сервис: сайт и API работают вместе
+## Что теперь в проекте
 
-## Структура проекта
+- `apps/web` — статический клиент для GitHub Pages
+- `.github/workflows/deploy-pages.yml` — автодеплой сайта
+- `supabase/nexa_schema.sql` — SQL-схема для общей базы
+- `apps/web/src/supabase.ts` — подключение к Supabase
 
-```text
-D:\Nexa
-├─ apps
-│  ├─ server
-│  └─ web
-├─ Dockerfile
-├─ railway.toml
-└─ package.json
-```
-
-## Локальный запуск
-
-1. Установить зависимости:
+## Локальный запуск сайта
 
 ```bash
 npm install
-```
-
-2. Скопировать env-файлы:
-
-```bash
-copy apps\server\.env.example apps\server\.env
 copy apps\web\.env.example apps\web\.env
-```
-
-3. Запустить backend:
-
-```bash
-npm run dev:server
-```
-
-4. Во втором терминале запустить frontend:
-
-```bash
 npm run dev:web
 ```
 
-5. Открыть:
+Открыть:
 
 ```text
 http://localhost:5173
 ```
 
-## Продакшен
+## GitHub Pages
 
-Сайт и backend можно запустить как один сервис:
+В репозитории уже добавлен workflow для Pages.
 
-```bash
-npm run build
-npm run start
-```
+Чтобы сайт реально открылся через GitHub:
 
-После сборки сервер сам раздаёт фронтенд из `apps/web/dist`.
+1. Открой репозиторий `jessew1lliams/Nexa`.
+2. Перейди в `Settings` -> `Pages`.
+3. В `Source` выбери `GitHub Actions`.
+4. После этого каждый новый `push` в `main` будет запускать деплой.
 
-## Постоянная работа 24/7
-
-Если люди должны писать друг другу в любое время, `Nexa` должен работать на отдельном сервере, а не на твоём ПК.
-
-Важно: `GitHub` сам по себе хранит код, но не запускает мессенджер постоянно. Для этого нужен хостинг.
-
-## Railway деплой
-
-Для `Nexa` я подготовил деплой под `Railway`:
-
-- автодеплой из GitHub при новых пушах
-- публичный домен вида `*.railway.app`
-- volume для постоянного хранения `SQLite`
-- healthcheck по `/health`
-- запуск через `Dockerfile`
-
-Почему Railway здесь подходит:
-
-- Railway поддерживает `GitHub Autodeploys`: [официальная документация](https://docs.railway.com/build-deploy)
-- Railway даёт публичные домены `*.railway.app`: [официальная документация](https://docs.railway.com/guides/manage-domains)
-- Railway поддерживает `Volumes` для постоянных данных: [официальная документация](https://docs.railway.com/overview/the-basics)
-
-### Что сделать в Railway
-
-1. Зайди в Railway и создай новый проект из GitHub-репозитория `jessew1lliams/Nexa`.
-2. Railway сам увидит `Dockerfile` и `railway.toml`.
-3. После первого деплоя создай `Volume` и примонтируй его в:
+Публичный адрес будет такого вида:
 
 ```text
-/app/apps/server/data
+https://jessew1lliams.github.io/Nexa/
 ```
 
-4. Добавь переменные окружения:
+Если репозиторий остаётся `Private`, обрати внимание на важный нюанс:
 
-```text
-NODE_ENV=production
-SERVER_NAME=Nexa
-UNIVERSITY_NAME=Your University
-SESSION_SECRET=change-me-in-production
-```
+- GitHub Pages для `private`-репозиториев доступен не на всех планах GitHub
+- если Pages не публикуется, проще всего сделать репозиторий `public` или использовать платный план GitHub
+- источник: GitHub Docs  
+  https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
 
-5. Нажми `Generate Domain`, чтобы получить публичный адрес сайта.
-6. После этого каждый новый `git push` в `main` будет автоматически выкатывать обновления.
+## GitHub Secrets для Supabase
 
-## Telegram вход
+Чтобы сайт на GitHub Pages работал с общей базой, добавь в репозиторий:
 
-Для реального входа через Telegram потом понадобятся значения:
+`Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 
-- `TELEGRAM_CLIENT_ID`
-- `TELEGRAM_CLIENT_SECRET`
-- `TELEGRAM_REDIRECT_URI`
+Нужны два секрета:
 
-Когда у сайта появится настоящий публичный URL, `TELEGRAM_REDIRECT_URI` нужно будет поменять на адрес твоего домена.
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Если они не добавлены, сайт всё равно откроется, но будет работать только в демо-режиме на одном устройстве.
+
+## Supabase
+
+1. Создай проект в Supabase.
+2. Открой `SQL Editor`.
+3. Вставь содержимое файла `supabase/nexa_schema.sql`.
+4. Выполни SQL.
+
+Это создаст:
+
+- `profiles`
+- `chats`
+- `chat_members`
+- `messages`
+- default-чат `Nexa / Общий чат`
+- базовые `RLS` policies
+
+После этого пользователи, вошедшие через сайт, смогут видеть общий чат и общие сообщения.
+
+## Как это работает сейчас
+
+- без Supabase: сайт открывается через GitHub Pages и работает как демо
+- с Supabase: сайт остаётся на GitHub Pages, а переписка становится общей и постоянной
+
+## Важно
+
+`GitHub Pages` хранит и открывает сайт, но не запускает backend.
+
+Поэтому для схемы “как ChanceMusic” правильный путь именно такой:
+
+- интерфейс и публикация: `GitHub Pages`
+- данные и синхронизация: `Supabase`

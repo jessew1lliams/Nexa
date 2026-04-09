@@ -1,26 +1,145 @@
-import { useEffect, useRef, useState } from "react";
-import { io, type Socket } from "socket.io-client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
 
-import { api } from "./api";
-import type { AuthProvidersResponse, BootstrapPayload, ChatSummary, Message, User } from "./types";
+import { supabase, supabaseEnabled } from "./supabase";
+import type {
+  AppUser,
+  ChatKind,
+  ChatMessage,
+  ChatRecord,
+  ChatSummary,
+  SupabaseChatMemberRow,
+  SupabaseChatRow,
+  SupabaseMessageRow,
+  SupabaseProfileRow,
+  UserRole,
+  WorkspaceData
+} from "./types";
 
-const authStorageKey = "nexa-auth-token";
+const demoSessionKey = "nexa-demo-session-v1";
+const demoMessagesKey = "nexa-demo-messages-v1";
 const maxMessageLength = 1500;
+const universityName = "Nexa University";
+const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
   live: "онлайн",
   reconnecting: "переподключение",
-  offline: "офлайн"
+  offline: "офлайн",
+  local: "локально"
 } as const;
-const chatKindCopy: Record<ChatSummary["kind"], string> = {
-  group: "группа",
-  direct: "личный чат",
-  channel: "канал"
-};
-const roleCopy: Record<User["role"], string> = {
+const roleCopy: Record<UserRole, string> = {
   student: "студент",
   curator: "куратор",
   teacher: "преподаватель"
 };
+const chatKindCopy: Record<ChatKind, string> = {
+  group: "группа",
+  direct: "личный чат",
+  channel: "канал"
+};
+const demoUsers: AppUser[] = [
+  {
+    id: "demo-1",
+    name: "Ксюша Никифорова",
+    username: "ksushan",
+    role: "student",
+    accentColor: "#2795FF",
+    bio: "Староста группы и первый тестовый пользователь Nexa."
+  },
+  {
+    id: "demo-2",
+    name: "Илья Соколов",
+    username: "ilya_net",
+    role: "student",
+    accentColor: "#F77F5A",
+    bio: "Помогает с лабами и отвечает даже ночью."
+  },
+  {
+    id: "demo-3",
+    name: "Марина Волкова",
+    username: "marina_v",
+    role: "student",
+    accentColor: "#47B39C",
+    bio: "Следит, чтобы важные сообщения не терялись."
+  },
+  {
+    id: "demo-4",
+    name: "Анна Сергеева",
+    username: "curator_anna",
+    role: "curator",
+    accentColor: "#6D83F2",
+    bio: "Куратор и источник всех организационных объявлений."
+  }
+];
+const demoChats: ChatRecord[] = [
+  {
+    id: "chat-general",
+    title: "Nexa / Общий чат",
+    kind: "group",
+    description: "Главный чат группы для общения и новостей.",
+    accentColor: "#2795FF",
+    isDefault: true
+  },
+  {
+    id: "chat-labs",
+    title: "Лабы и дедлайны",
+    kind: "group",
+    description: "Вопросы по заданиям, отчётам и защите.",
+    accentColor: "#F77F5A"
+  },
+  {
+    id: "chat-curator",
+    title: "Куратор / Объявления",
+    kind: "channel",
+    description: "Важные сообщения, которые лучше не пропускать.",
+    accentColor: "#47B39C"
+  }
+];
+const demoMembersByChat: Record<string, string[]> = {
+  "chat-general": ["demo-1", "demo-2", "demo-3", "demo-4"],
+  "chat-labs": ["demo-1", "demo-2", "demo-3"],
+  "chat-curator": ["demo-1", "demo-2", "demo-3", "demo-4"]
+};
+const demoSeedMessages: Record<string, ChatMessage[]> = {
+  "chat-general": [
+    {
+      id: "msg-1",
+      chatId: "chat-general",
+      authorId: "demo-4",
+      text: "Добро пожаловать в Nexa. Здесь можно общаться всей группой.",
+      sentAt: new Date(Date.now() - 90 * 60_000).toISOString()
+    },
+    {
+      id: "msg-2",
+      chatId: "chat-general",
+      authorId: "demo-1",
+      text: "Сайт теперь может жить как GitHub Pages-приложение.",
+      sentAt: new Date(Date.now() - 55 * 60_000).toISOString()
+    }
+  ],
+  "chat-labs": [
+    {
+      id: "msg-3",
+      chatId: "chat-labs",
+      authorId: "demo-2",
+      text: "Если что, сюда можно кидать вопросы по лабораторным.",
+      sentAt: new Date(Date.now() - 42 * 60_000).toISOString()
+    }
+  ],
+  "chat-curator": [
+    {
+      id: "msg-4",
+      chatId: "chat-curator",
+      authorId: "demo-4",
+      text: "После подключения Supabase здесь будет общая переписка для всех устройств.",
+      sentAt: new Date(Date.now() - 30 * 60_000).toISOString()
+    }
+  ]
+};
+
+type ConnectionLabel = keyof typeof connectionCopy;
+type AuthScreen = "login" | "signup";
+type SignMode = "supabase" | "demo";
 
 function getInitials(name: string) {
   return name
@@ -60,15 +179,15 @@ function formatChatStamp(isoTimestamp: string | null) {
   }).format(date);
 }
 
-function sortChats(chats: ChatSummary[]) {
-  return [...chats].sort((left, right) => {
-    const leftTime = left.lastMessageAt ? new Date(left.lastMessageAt).getTime() : 0;
-    const rightTime = right.lastMessageAt ? new Date(right.lastMessageAt).getTime() : 0;
-    return rightTime - leftTime;
-  });
+function normalizeUsername(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
 }
 
-function buildPreview(users: User[], currentUserId: string, message: Message) {
+function pickAccentColor(seed: string) {
+  const index = Math.abs(seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % accentPalette.length;
+  return accentPalette[index];
+}
+function buildPreview(users: AppUser[], currentUserId: string, message: ChatMessage) {
   if (message.authorId === currentUserId) {
     return `Вы: ${message.text}`;
   }
@@ -78,193 +197,495 @@ function buildPreview(users: User[], currentUserId: string, message: Message) {
   return `${authorName}: ${message.text}`;
 }
 
-function applyIncomingMessage(payload: BootstrapPayload, message: Message) {
-  const currentMessages = payload.messagesByChat[message.chatId] ?? [];
-  if (currentMessages.some((entry) => entry.id === message.id)) {
-    return payload;
+function sortChats(chats: ChatSummary[]) {
+  return [...chats].sort((left, right) => {
+    const leftTime = left.lastMessageAt ? new Date(left.lastMessageAt).getTime() : 0;
+    const rightTime = right.lastMessageAt ? new Date(right.lastMessageAt).getTime() : 0;
+    return rightTime - leftTime;
+  });
+}
+
+function buildWorkspace(args: {
+  currentUserId: string;
+  users: AppUser[];
+  chatRecords: ChatRecord[];
+  memberIdsByChat: Record<string, string[]>;
+  messagesByChat: Record<string, ChatMessage[]>;
+  mode: WorkspaceData["mode"];
+  syncLabel: string;
+  universityName: string;
+}) {
+  const currentUser = args.users.find((user) => user.id === args.currentUserId);
+  if (!currentUser) {
+    throw new Error("Не удалось определить текущего пользователя.");
   }
 
-  const nextMessagesByChat = {
-    ...payload.messagesByChat,
-    [message.chatId]: [...currentMessages, message]
-  };
+  const chats = sortChats(
+    args.chatRecords.map((chat) => {
+      const messages = args.messagesByChat[chat.id] ?? [];
+      const lastMessage = messages.at(-1) ?? null;
 
-  const nextChats = sortChats(
-    payload.chats.map((chat) =>
-      chat.id === message.chatId
-        ? {
-            ...chat,
-            lastMessagePreview: buildPreview(payload.users, payload.currentUser.id, message),
-            lastMessageAt: message.sentAt
-          }
-        : chat
-    )
+      return {
+        ...chat,
+        memberIds: args.memberIdsByChat[chat.id] ?? [],
+        lastMessagePreview: lastMessage ? buildPreview(args.users, currentUser.id, lastMessage) : "Пока без сообщений",
+        lastMessageAt: lastMessage?.sentAt ?? null,
+        unreadCount: 0
+      } satisfies ChatSummary;
+    })
   );
 
   return {
-    ...payload,
-    chats: nextChats,
-    messagesByChat: nextMessagesByChat
+    currentUser,
+    users: args.users,
+    chatRecords: args.chatRecords,
+    memberIdsByChat: args.memberIdsByChat,
+    chats,
+    messagesByChat: args.messagesByChat,
+    mode: args.mode,
+    syncLabel: args.syncLabel,
+    universityName: args.universityName
+  } satisfies WorkspaceData;
+}
+
+function mapProfileRow(row: SupabaseProfileRow): AppUser {
+  return {
+    id: row.id,
+    email: row.email ?? undefined,
+    name: row.full_name,
+    username: row.username,
+    role: row.role ?? "student",
+    accentColor: row.accent_color,
+    bio: row.bio ?? "Участник Nexa."
   };
 }
 
+function mapChatRow(row: SupabaseChatRow): ChatRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    kind: row.kind,
+    description: row.description,
+    accentColor: row.accent_color,
+    isDefault: Boolean(row.is_default)
+  };
+}
+
+function mapMessageRow(row: SupabaseMessageRow): ChatMessage {
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    authorId: row.author_id,
+    text: row.content,
+    sentAt: row.created_at
+  };
+}
+
+function loadDemoSessionUserId() {
+  return localStorage.getItem(demoSessionKey);
+}
+
+function saveDemoSessionUserId(userId: string | null) {
+  if (!userId) {
+    localStorage.removeItem(demoSessionKey);
+    return;
+  }
+
+  localStorage.setItem(demoSessionKey, userId);
+}
+
+function loadDemoMessages() {
+  try {
+    const raw = localStorage.getItem(demoMessagesKey);
+    if (!raw) {
+      return demoSeedMessages;
+    }
+
+    return JSON.parse(raw) as Record<string, ChatMessage[]>;
+  } catch {
+    return demoSeedMessages;
+  }
+}
+
+function saveDemoMessages(messagesByChat: Record<string, ChatMessage[]>) {
+  localStorage.setItem(demoMessagesKey, JSON.stringify(messagesByChat));
+}
+
+function buildDemoWorkspace(userId: string) {
+  const currentUser = demoUsers.find((user) => user.id === userId) ?? demoUsers[0];
+  return buildWorkspace({
+    currentUserId: currentUser.id,
+    users: demoUsers,
+    chatRecords: demoChats,
+    memberIdsByChat: demoMembersByChat,
+    messagesByChat: loadDemoMessages(),
+    mode: "demo",
+    syncLabel: "GitHub Pages открыт, но общая база не подключена. Сейчас это демо на этом устройстве.",
+    universityName
+  });
+}
+
+function appendDemoMessage(chatId: string, authorId: string, text: string) {
+  const messagesByChat = loadDemoMessages();
+  const message: ChatMessage = {
+    id: `demo-${crypto.randomUUID()}`,
+    chatId,
+    authorId,
+    text,
+    sentAt: new Date().toISOString()
+  };
+
+  saveDemoMessages({
+    ...messagesByChat,
+    [chatId]: [...(messagesByChat[chatId] ?? []), message]
+  });
+
+  return message;
+}
+
+async function ensureSupabaseProfile(user: SupabaseAuthUser) {
+  if (!supabase) {
+    throw new Error("Supabase клиент не настроен.");
+  }
+
+  const metadata = user.user_metadata ?? {};
+  const fallbackName = String(metadata.full_name || user.email?.split("@")[0] || "Студент Nexa");
+  const fallbackUsername = normalizeUsername(String(metadata.username || user.email?.split("@")[0] || `user_${user.id.slice(0, 8)}`)) || `user_${user.id.slice(0, 8)}`;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        email: user.email ?? null,
+        full_name: fallbackName,
+        username: fallbackUsername,
+        role: "student",
+        accent_color: pickAccentColor(user.id),
+        bio: "Участник Nexa через GitHub Pages + Supabase."
+      },
+      { onConflict: "id" }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return mapProfileRow(data as SupabaseProfileRow);
+}
+
+async function ensureDefaultMemberships(userId: string) {
+  if (!supabase) {
+    return;
+  }
+
+  const { data: defaultChats, error } = await supabase.from("chats").select("id").eq("is_default", true);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!defaultChats?.length) {
+    return;
+  }
+
+  const { error: membershipError } = await supabase
+    .from("chat_members")
+    .upsert(
+      defaultChats.map((chat) => ({ chat_id: String(chat.id), user_id: userId })),
+      { onConflict: "chat_id,user_id", ignoreDuplicates: true }
+    );
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+}
+async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
+  if (!supabase) {
+    throw new Error("Supabase клиент не настроен.");
+  }
+
+  await ensureSupabaseProfile(user);
+  await ensureDefaultMemberships(user.id);
+
+  const { data: ownMemberships, error: ownMembershipError } = await supabase
+    .from("chat_members")
+    .select("chat_id")
+    .eq("user_id", user.id);
+
+  if (ownMembershipError) {
+    throw new Error(ownMembershipError.message);
+  }
+
+  const chatIds = (ownMemberships ?? []).map((row) => String(row.chat_id));
+  if (!chatIds.length) {
+    const profile = await ensureSupabaseProfile(user);
+    return buildWorkspace({
+      currentUserId: profile.id,
+      users: [profile],
+      chatRecords: [],
+      memberIdsByChat: {},
+      messagesByChat: {},
+      mode: "supabase",
+      syncLabel: "Supabase подключён. Добавь SQL-схему и общий чат, чтобы люди видели друг друга.",
+      universityName
+    });
+  }
+
+  const [{ data: chatRows, error: chatError }, { data: memberRows, error: memberError }, { data: messageRows, error: messageError }] =
+    await Promise.all([
+      supabase.from("chats").select("*").in("id", chatIds),
+      supabase.from("chat_members").select("chat_id,user_id").in("chat_id", chatIds),
+      supabase.from("messages").select("*").in("chat_id", chatIds).order("created_at", { ascending: true })
+    ]);
+
+  if (chatError) {
+    throw new Error(chatError.message);
+  }
+  if (memberError) {
+    throw new Error(memberError.message);
+  }
+  if (messageError) {
+    throw new Error(messageError.message);
+  }
+
+  const memberIds = Array.from(new Set((memberRows ?? []).map((row) => String((row as SupabaseChatMemberRow).user_id))));
+  const { data: profileRows, error: profileError } = await supabase
+    .from("profiles")
+    .select("*")
+    .in("id", memberIds.length ? memberIds : [user.id]);
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  const users = ((profileRows as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+  const memberIdsByChat = ((memberRows as SupabaseChatMemberRow[] | null) ?? []).reduce<Record<string, string[]>>((acc, row) => {
+    const chatId = String(row.chat_id);
+    acc[chatId] = [...(acc[chatId] ?? []), String(row.user_id)];
+    return acc;
+  }, {});
+  const messagesByChat = ((messageRows as SupabaseMessageRow[] | null) ?? []).reduce<Record<string, ChatMessage[]>>((acc, row) => {
+    const message = mapMessageRow(row);
+    acc[message.chatId] = [...(acc[message.chatId] ?? []), message];
+    return acc;
+  }, {});
+
+  return buildWorkspace({
+    currentUserId: user.id,
+    users,
+    chatRecords: ((chatRows as SupabaseChatRow[] | null) ?? []).map(mapChatRow),
+    memberIdsByChat,
+    messagesByChat,
+    mode: "supabase",
+    syncLabel: "GitHub Pages открыт для сайта, а сообщения синхронизируются через Supabase.",
+    universityName
+  });
+}
+
+function applyIncomingMessage(current: WorkspaceData, message: ChatMessage) {
+  const currentMessages = current.messagesByChat[message.chatId] ?? [];
+  if (currentMessages.some((entry) => entry.id === message.id)) {
+    return current;
+  }
+
+  return buildWorkspace({
+    currentUserId: current.currentUser.id,
+    users: current.users,
+    chatRecords: current.chatRecords,
+    memberIdsByChat: current.memberIdsByChat,
+    messagesByChat: {
+      ...current.messagesByChat,
+      [message.chatId]: [...currentMessages, message]
+    },
+    mode: current.mode,
+    syncLabel: current.syncLabel,
+    universityName: current.universityName
+  });
+}
+
 function App() {
-  const [providers, setProviders] = useState<AuthProvidersResponse | null>(null);
-  const [devUsers, setDevUsers] = useState<User[]>([]);
-  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem(authStorageKey));
-  const [bootstrap, setBootstrap] = useState<BootstrapPayload | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionLabel, setConnectionLabel] = useState<keyof typeof connectionCopy>("offline");
-  const socketRef = useRef<Socket | null>(null);
+  const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>(supabaseEnabled ? "offline" : "local");
+  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
+  const [signMode, setSignMode] = useState<SignMode>(supabaseEnabled ? "supabase" : "demo");
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const realtimeChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+
+  const activeChat = workspace?.chats.find((chat) => chat.id === selectedChatId) ?? workspace?.chats[0] ?? null;
+  const activeMessages = activeChat ? workspace?.messagesByChat[activeChat.id] ?? [] : [];
+  const usersById = useMemo(() => new Map((workspace?.users ?? []).map((user) => [user.id, user])), [workspace?.users]);
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.pathname !== "/auth/telegram/callback") {
+    const demoUserId = loadDemoSessionUserId();
+    if (demoUserId) {
+      const nextWorkspace = buildDemoWorkspace(demoUserId);
+      setWorkspace(nextWorkspace);
+      setSelectedChatId(nextWorkspace.chats[0]?.id ?? null);
+      setConnectionLabel("local");
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !supabase) {
+      setIsLoading(false);
       return;
     }
 
-    const token = url.searchParams.get("token");
-    const callbackError = url.searchParams.get("error");
+    const client = supabase;
+    let ignore = false;
 
-    if (token) {
-      localStorage.setItem(authStorageKey, token);
-      setAuthToken(token);
-      setError(null);
-    } else if (callbackError) {
-      setError("Вход через Telegram не завершился. Проверь настройки бота и адрес возврата.");
-    }
-
-    window.history.replaceState({}, document.title, "/");
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadAuthOptions() {
+    async function bootstrapSupabase() {
       try {
-        const [providersResponse, usersResponse] = await Promise.all([api.getProviders(), api.getDevUsers()]);
-        if (cancelled) {
+        const { data, error: userError } = await client.auth.getUser();
+        if (userError) {
+          throw new Error(userError.message);
+        }
+
+        if (ignore) {
           return;
         }
 
-        setProviders(providersResponse);
-        setDevUsers(usersResponse.users);
+        if (data.user) {
+          const nextWorkspace = await fetchSupabaseWorkspace(data.user);
+          if (!ignore) {
+            setWorkspace(nextWorkspace);
+            setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
+            setSignMode("supabase");
+          }
+        }
       } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить настройки.");
+        if (!ignore) {
+          setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить Supabase.");
         }
-      }
-    }
-
-    loadAuthOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadBootstrap() {
-      if (!authToken) {
-        setBootstrap(null);
-        setSelectedChatId(null);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const payload = await api.getBootstrap(authToken);
-        if (cancelled) {
-          return;
-        }
-
-        setBootstrap(payload);
-        setSelectedChatId((currentId) => currentId ?? payload.chats[0]?.id ?? null);
-        setError(null);
-      } catch (loadError) {
-        if (cancelled) {
-          return;
-        }
-
-        localStorage.removeItem(authStorageKey);
-        setAuthToken(null);
-        setBootstrap(null);
-        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные Nexa.");
       } finally {
-        if (!cancelled) {
+        if (!ignore) {
           setIsLoading(false);
         }
       }
     }
 
-    loadBootstrap();
-    return () => {
-      cancelled = true;
-    };
-  }, [authToken]);
+    bootstrapSupabase();
 
-  useEffect(() => {
-    if (!authToken) {
-      socketRef.current?.disconnect();
-      socketRef.current = null;
-      setConnectionLabel("offline");
-      return;
-    }
+    const { data: authListener } = client.auth.onAuthStateChange(async (_event, session) => {
+      if (ignore) {
+        return;
+      }
 
-    const socket = io(api.baseUrl, {
-      auth: {
-        token: authToken
+      if (!session?.user) {
+        if (!loadDemoSessionUserId()) {
+          setWorkspace(null);
+        }
+        setConnectionLabel(loadDemoSessionUserId() ? "local" : "offline");
+        return;
+      }
+
+      try {
+        const nextWorkspace = await fetchSupabaseWorkspace(session.user);
+        if (!ignore) {
+          setWorkspace(nextWorkspace);
+          setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
+          setError(null);
+          setNotice("Supabase-сессия обновлена. Теперь чат общий для всех, кто вошёл через сайт.");
+        }
+      } catch (loadError) {
+        if (!ignore) {
+          setError(loadError instanceof Error ? loadError.message : "Не удалось обновить сессию.");
+        }
       }
     });
 
-    socket.on("connect", () => {
-      setConnectionLabel("live");
-    });
+    return () => {
+      ignore = true;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase" || !supabase) {
+      if (workspace?.mode === "demo") {
+        setConnectionLabel("local");
+      }
+      return;
+    }
 
-    socket.on("disconnect", () => {
-      setConnectionLabel("reconnecting");
-    });
-
-    socket.on("connect_error", () => {
-      setConnectionLabel("offline");
-    });
-
-    socket.on("message:created", (event: { chatId: string; message: Message }) => {
-      setBootstrap((currentPayload) => {
-        if (!currentPayload) {
-          return currentPayload;
+    const client = supabase;
+    realtimeChannelRef.current?.unsubscribe();
+    const channel = client
+      .channel(`nexa-messages-${workspace.currentUser.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, async (payload) => {
+        const row = payload.new as SupabaseMessageRow;
+        if (!workspace.memberIdsByChat[row.chat_id]) {
+          return;
         }
 
-        return applyIncomingMessage(currentPayload, event.message);
+        const message = mapMessageRow(row);
+        setWorkspace((current) => (current ? applyIncomingMessage(current, message) : current));
+
+        if (!usersById.has(message.authorId)) {
+          const { data } = await client.from("profiles").select("*").eq("id", message.authorId).single();
+          if (data) {
+            setWorkspace((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const mergedUsers = [...current.users, mapProfileRow(data as SupabaseProfileRow)];
+              return buildWorkspace({
+                currentUserId: current.currentUser.id,
+                users: mergedUsers,
+                chatRecords: current.chatRecords,
+                memberIdsByChat: current.memberIdsByChat,
+                messagesByChat: current.messagesByChat,
+                mode: current.mode,
+                syncLabel: current.syncLabel,
+                universityName: current.universityName
+              });
+            });
+          }
+        }
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setConnectionLabel("live");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setConnectionLabel("offline");
+        } else if (status === "CLOSED") {
+          setConnectionLabel("reconnecting");
+        }
       });
-    });
 
-    socketRef.current = socket;
-
+    realtimeChannelRef.current = channel;
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      channel.unsubscribe();
     };
-  }, [authToken]);
+  }, [workspace, usersById]);
 
-  const activeChat = bootstrap?.chats.find((chat) => chat.id === selectedChatId) ?? bootstrap?.chats[0] ?? null;
-  const activeMessages = activeChat ? bootstrap?.messagesByChat[activeChat.id] ?? [] : [];
-  const draftLength = draft.length;
-  const isSendDisabled = isBusy || !draft.trim();
+  async function handleSupabaseLogin() {
+    if (!supabase) {
+      setError("Supabase пока не настроен. Добавь ключи в GitHub Secrets и локальный env.");
+      return;
+    }
 
-  async function handleDevLogin(userId: string) {
     setIsBusy(true);
     try {
-      const response = await api.devLogin(userId);
-      localStorage.setItem(authStorageKey, response.token);
-      setAuthToken(response.token);
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) {
+        throw new Error(signInError.message);
+      }
+
       setError(null);
+      setNotice("Вход выполнен. Если общий чат уже настроен в Supabase, сообщения будут общими для всех.");
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Не удалось войти.");
     } finally {
@@ -272,28 +693,73 @@ function App() {
     }
   }
 
-  async function handleTelegramLogin() {
+  async function handleSupabaseSignup() {
+    if (!supabase) {
+      setError("Supabase пока не настроен. Добавь ключи в GitHub Secrets и локальный env.");
+      return;
+    }
+
+    const cleanUsername = normalizeUsername(username);
+    if (!fullName.trim() || !cleanUsername) {
+      setError("Укажи имя и username латиницей, чтобы создать аккаунт.");
+      return;
+    }
+
     setIsBusy(true);
     try {
-      const response = await api.beginTelegramLogin();
-      window.location.href = response.url;
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Не удалось начать вход через Telegram.");
+      const { error: signupError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            username: cleanUsername
+          }
+        }
+      });
+
+      if (signupError) {
+        throw new Error(signupError.message);
+      }
+
+      setError(null);
+      setNotice("Аккаунт создан. Если в Supabase включено подтверждение email, открой письмо и подтверди вход.");
+      setAuthScreen("login");
+    } catch (signupError) {
+      setError(signupError instanceof Error ? signupError.message : "Не удалось создать аккаунт.");
+    } finally {
       setIsBusy(false);
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem(authStorageKey);
-    setAuthToken(null);
-    setBootstrap(null);
+  function handleDemoLogin(userId: string) {
+    saveDemoSessionUserId(userId);
+    const nextWorkspace = buildDemoWorkspace(userId);
+    setWorkspace(nextWorkspace);
+    setSelectedChatId(nextWorkspace.chats[0]?.id ?? null);
+    setConnectionLabel("local");
+    setError(null);
+    setNotice("Ты вошёл в демо-режиме. На GitHub Pages сайт откроется, но общая база появится после подключения Supabase.");
+  }
+
+  async function handleLogout() {
+    if (workspace?.mode === "supabase" && supabase) {
+      await supabase.auth.signOut();
+    }
+
+    if (workspace?.mode === "demo") {
+      saveDemoSessionUserId(null);
+    }
+
+    setWorkspace(null);
     setSelectedChatId(null);
     setDraft("");
-    setError(null);
+    setNotice(null);
+    setConnectionLabel(supabaseEnabled ? "offline" : "local");
   }
 
   async function handleSendMessage() {
-    if (!authToken || !activeChat) {
+    if (!workspace || !activeChat) {
       return;
     }
 
@@ -309,16 +775,33 @@ function App() {
 
     setIsBusy(true);
     try {
-      const response = await api.sendMessage(authToken, activeChat.id, text);
+      if (workspace.mode === "demo") {
+        const message = appendDemoMessage(activeChat.id, workspace.currentUser.id, text);
+        setWorkspace(buildDemoWorkspace(workspace.currentUser.id));
+        setSelectedChatId(activeChat.id);
+        setDraft("");
+        setError(null);
+        setNotice(`Демо-сообщение сохранено на этом устройстве в ${formatTime(message.sentAt)}.`);
+        return;
+      }
+
+      if (!supabase) {
+        throw new Error("Supabase не подключён.");
+      }
+
+      const { data, error: insertError } = await supabase
+        .from("messages")
+        .insert({ chat_id: activeChat.id, author_id: workspace.currentUser.id, content: text })
+        .select()
+        .single();
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      setWorkspace((current) => (current ? applyIncomingMessage(current, mapMessageRow(data as SupabaseMessageRow)) : current));
       setDraft("");
       setError(null);
-      setBootstrap((currentPayload) => {
-        if (!currentPayload) {
-          return currentPayload;
-        }
-
-        return applyIncomingMessage(currentPayload, response.message);
-      });
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Сообщение не отправилось.");
     } finally {
@@ -326,91 +809,103 @@ function App() {
     }
   }
 
-  if (isLoading && authToken) {
+  if (isLoading) {
     return (
       <div className="center-state">
         <div className="loading-card panel">
           <span className="eyebrow">Nexa запускается</span>
-          <h1>Загружаю твой университетский мессенджер</h1>
-          <p>Секунду, поднимаю сервер, чаты и текущую сессию.</p>
+          <h1>Подготавливаю сайт для GitHub Pages</h1>
+          <p>Проверяю локальную сессию, Supabase и состояние твоего мессенджера.</p>
         </div>
       </div>
     );
   }
-
-  if (!authToken || !bootstrap) {
+  if (!workspace) {
     return (
       <div className="login-shell">
         <section className="brand-card panel">
-          <span className="eyebrow">закрытый университетский мессенджер</span>
+          <span className="eyebrow">github pages + supabase</span>
           <h1>Nexa</h1>
           <p className="brand-copy">
-            Мессенджер для своей группы, курса или всего университета. Всё работает на отдельном сервере, а вход
-            можно связать с Telegram.
+            Теперь `Nexa` можно открыть как обычный сайт через GitHub. Сам интерфейс живёт на GitHub Pages,
+            а общую переписку для всех устройств можно хранить в Supabase.
           </p>
           <div className="pill-row">
-            <span className="soft-pill">дизайн как мессенджер</span>
-            <span className="soft-pill">свой сервер</span>
-            <span className="soft-pill">пк и телефон</span>
+            <span className="soft-pill">сайт через GitHub</span>
+            <span className="soft-pill">общая база в Supabase</span>
+            <span className="soft-pill">автообновления после push</span>
           </div>
           <div className="feature-grid">
             <article className="feature-card">
-              <h2>Своя сеть</h2>
-              <p>Доступ только для своих людей, а не для всего интернета.</p>
+              <h2>Как ChanceMusic</h2>
+              <p>Сам сайт можно открывать прямо через GitHub Pages без отдельного backend-хостинга.</p>
             </article>
             <article className="feature-card">
-              <h2>Вход через Telegram</h2>
-              <p>Telegram ID можно использовать как основу аккаунта внутри Nexa.</p>
+              <h2>Живая база</h2>
+              <p>Если подключить Supabase, сообщения будут общими для всех, а не только у тебя на устройстве.</p>
             </article>
             <article className="feature-card">
-              <h2>Живой прототип</h2>
-              <p>Уже есть чаты, сообщения, realtime и база, которую можно развивать дальше.</p>
+              <h2>Автообновление</h2>
+              <p>После каждого `push` GitHub может сам пересобирать и выкатывать новую версию сайта.</p>
             </article>
           </div>
         </section>
 
         <section className="auth-card panel">
           <div className="auth-header">
-            <span className="eyebrow">вход</span>
+            <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Сейчас проще всего зайти как демо-пользователь. Реальный вход через Telegram подключим отдельно.</p>
+            <p>Если Supabase уже настроен, используй общий вход. Если нет, можешь открыть демо-режим и проверить сайт прямо сейчас.</p>
           </div>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={handleTelegramLogin}
-            disabled={isBusy || !providers?.telegram.enabled}
-          >
-            {providers?.telegram.enabled ? "Продолжить через Telegram" : "Вход через Telegram пока не настроен"}
-          </button>
-
-          <div className="divider">
-            <span>или быстрый вход для проверки</span>
+          <div className="auth-toggle-row">
+            <button type="button" className={`toggle-pill ${signMode === "supabase" ? "is-active" : ""}`} onClick={() => setSignMode("supabase")} disabled={!supabaseEnabled}>Supabase</button>
+            <button type="button" className={`toggle-pill ${signMode === "demo" ? "is-active" : ""}`} onClick={() => setSignMode("demo")}>Демо</button>
           </div>
 
-          <div className="dev-user-list">
-            {devUsers.map((user) => (
-              <button
-                type="button"
-                key={user.id}
-                className="user-card"
-                onClick={() => handleDevLogin(user.id)}
-                disabled={isBusy}
-              >
-                <span className="avatar" style={{ backgroundColor: user.accentColor }}>
-                  {getInitials(user.name)}
-                </span>
-                <span className="user-copy">
-                  <strong>{user.name}</strong>
-                  <span>
-                    @{user.username} · {roleCopy[user.role]}
-                  </span>
-                </span>
+          {signMode === "supabase" ? (
+            <div className="auth-form">
+              {!supabaseEnabled ? (
+                <div className="helper-card">
+                  <strong>Supabase ещё не подключён.</strong>
+                  <p>Добавь `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` в GitHub Secrets и локальный `.env`, затем включи GitHub Pages deployment.</p>
+                </div>
+              ) : null}
+
+              <div className="auth-toggle-row compact-row">
+                <button type="button" className={`toggle-pill ${authScreen === "login" ? "is-active" : ""}`} onClick={() => setAuthScreen("login")}>Вход</button>
+                <button type="button" className={`toggle-pill ${authScreen === "signup" ? "is-active" : ""}`} onClick={() => setAuthScreen("signup")}>Регистрация</button>
+              </div>
+
+              {authScreen === "signup" ? (
+                <>
+                  <input className="field" placeholder="Имя и фамилия" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+                  <input className="field" placeholder="username латиницей" value={username} onChange={(event) => setUsername(event.target.value)} />
+                </>
+              ) : null}
+
+              <input className="field" placeholder="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input className="field" placeholder="Пароль" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+
+              <button type="button" className="primary-button" onClick={authScreen === "login" ? handleSupabaseLogin : handleSupabaseSignup} disabled={isBusy || !supabaseEnabled}>
+                {authScreen === "login" ? "Войти через Supabase" : "Создать аккаунт"}
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="dev-user-list">
+              {demoUsers.map((user) => (
+                <button type="button" key={user.id} className="user-card" onClick={() => handleDemoLogin(user.id)}>
+                  <span className="avatar" style={{ backgroundColor: user.accentColor }}>{getInitials(user.name)}</span>
+                  <span className="user-copy">
+                    <strong>{user.name}</strong>
+                    <span>@{user.username} · {roleCopy[user.role]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
+          {notice ? <p className="notice-text">{notice}</p> : null}
           {error ? <p className="error-text">{error}</p> : null}
         </section>
       </div>
@@ -422,32 +917,25 @@ function App() {
       <aside className="sidebar panel">
         <div className="sidebar-top">
           <div>
-            <span className="eyebrow">сервер nexa</span>
-            <h1>{bootstrap.meta.serverName}</h1>
+            <span className="eyebrow">nexa online</span>
+            <h1>Nexa</h1>
           </div>
           <span className={`status-chip status-${connectionLabel}`}>{connectionCopy[connectionLabel]}</span>
         </div>
 
         <div className="search-shell">
-          <input className="search-input" value="Поиск скоро появится" readOnly />
+          <input className="search-input" value="GitHub Pages / Supabase messenger" readOnly />
         </div>
 
         <div className="sidebar-pills">
-          <span className="soft-pill">{bootstrap.meta.universityName}</span>
-          <span className="soft-pill">{bootstrap.meta.accessModel}</span>
+          <span className="soft-pill">{workspace.universityName}</span>
+          <span className="soft-pill">{workspace.mode === "supabase" ? "общая база" : "демо-режим"}</span>
         </div>
 
         <div className="chat-list">
-          {bootstrap.chats.map((chat) => (
-            <button
-              type="button"
-              key={chat.id}
-              className={`chat-row ${activeChat?.id === chat.id ? "is-active" : ""}`}
-              onClick={() => setSelectedChatId(chat.id)}
-            >
-              <span className="avatar" style={{ backgroundColor: chat.accentColor }}>
-                {getInitials(chat.title)}
-              </span>
+          {workspace.chats.map((chat) => (
+            <button type="button" key={chat.id} className={`chat-row ${activeChat?.id === chat.id ? "is-active" : ""}`} onClick={() => setSelectedChatId(chat.id)}>
+              <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
               <span className="chat-copy">
                 <span className="chat-copy-head">
                   <strong>{chat.title}</strong>
@@ -465,9 +953,7 @@ function App() {
           <>
             <header className="conversation-top">
               <div className="conversation-meta">
-                <span className="avatar large" style={{ backgroundColor: activeChat.accentColor }}>
-                  {getInitials(activeChat.title)}
-                </span>
+                <span className="avatar large" style={{ backgroundColor: activeChat.accentColor }}>{getInitials(activeChat.title)}</span>
                 <div>
                   <h2>{activeChat.title}</h2>
                   <p>{activeChat.description}</p>
@@ -481,16 +967,12 @@ function App() {
 
             <div className="message-list">
               {activeMessages.map((message) => {
-                const author = bootstrap.users.find((user) => user.id === message.authorId);
-                const isOwnMessage = message.authorId === bootstrap.currentUser.id;
+                const author = usersById.get(message.authorId);
+                const isOwnMessage = message.authorId === workspace.currentUser.id;
 
                 return (
                   <article key={message.id} className={`message-bubble ${isOwnMessage ? "own" : ""}`}>
-                    {!isOwnMessage ? (
-                      <span className="message-author" style={{ color: author?.accentColor }}>
-                        {author?.name ?? "Неизвестный участник"}
-                      </span>
-                    ) : null}
+                    {!isOwnMessage ? <span className="message-author" style={{ color: author?.accentColor }}>{author?.name ?? "Неизвестный участник"}</span> : null}
                     <p>{message.text}</p>
                     <span className="message-time">{formatTime(message.sentAt)}</span>
                   </article>
@@ -505,66 +987,58 @@ function App() {
                   placeholder="Напиши сообщение в Nexa..."
                   value={draft}
                   onChange={(event) => {
-                    setDraft(event.target.value);
-                    if (error) {
-                      setError(null);
-                    }
+                    setDraft(event.target.value.slice(0, maxMessageLength));
+                    if (error) setError(null);
                   }}
                   rows={1}
-                  maxLength={maxMessageLength}
                 />
                 <div className="composer-meta">
-                  <span className="char-counter">
-                    {draftLength}/{maxMessageLength}
-                  </span>
+                  <span className="char-counter">{draft.length}/{maxMessageLength}</span>
                 </div>
               </div>
-              <button type="button" className="primary-button compact" onClick={handleSendMessage} disabled={isSendDisabled}>
-                Отправить
-              </button>
+              <button type="button" className="primary-button compact" onClick={handleSendMessage} disabled={isBusy || !draft.trim()}>Отправить</button>
             </footer>
           </>
         ) : (
           <div className="empty-state">
-            <h2>Чаты появятся здесь</h2>
-            <p>Как только у пользователя будут комнаты, они отобразятся в основной колонке.</p>
+            <h2>Пока нет чатов</h2>
+            <p>Если ты уже подключил Supabase, проверь SQL-схему и наличие default-чата.</p>
           </div>
         )}
       </main>
 
       <aside className="details-rail panel">
         <div className="profile-card">
-          <span className="avatar xl" style={{ backgroundColor: bootstrap.currentUser.accentColor }}>
-            {getInitials(bootstrap.currentUser.name)}
-          </span>
-          <h2>{bootstrap.currentUser.name}</h2>
-          <p>@{bootstrap.currentUser.username}</p>
-          <p>{bootstrap.currentUser.bio}</p>
+          <span className="avatar xl" style={{ backgroundColor: workspace.currentUser.accentColor }}>{getInitials(workspace.currentUser.name)}</span>
+          <h2>{workspace.currentUser.name}</h2>
+          <p>@{workspace.currentUser.username}</p>
+          <p>{workspace.currentUser.bio}</p>
+        </div>
+
+        <div className="detail-section">
+          <span className="eyebrow">синхронизация</span>
+          <p>{workspace.syncLabel}</p>
+          <p>{workspace.mode === "supabase" ? "Этот режим подходит для общей переписки между разными людьми и устройствами." : "Этот режим нужен, чтобы сайт открывался уже сейчас, даже до подключения общей базы."}</p>
         </div>
 
         <div className="detail-section">
           <span className="eyebrow">в этой версии</span>
           <ul className="detail-list">
-            <li>Сервер уже отдельный и приватный.</li>
-            <li>Вход через Telegram можно включить позже.</li>
-            <li>Сообщения приходят в реальном времени.</li>
+            <li>Сайт готов для GitHub Pages.</li>
+            <li>Для общей базы предусмотрен Supabase.</li>
+            <li>После push GitHub может обновлять сайт автоматически.</li>
           </ul>
         </div>
 
-        <div className="detail-section">
-          <span className="eyebrow">текущий чат</span>
-          <p>{activeChat?.title ?? "Чат не выбран"}</p>
-          <p>{activeChat?.description ?? "Выбери чат слева, чтобы продолжить."}</p>
-        </div>
-
+        {notice ? <p className="notice-text">{notice}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
 
-        <button type="button" className="ghost-button" onClick={handleLogout}>
-          Выйти
-        </button>
+        <button type="button" className="ghost-button" onClick={handleLogout}>Выйти</button>
       </aside>
     </div>
   );
 }
 
 export default App;
+
+
