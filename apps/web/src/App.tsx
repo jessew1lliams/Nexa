@@ -20,6 +20,7 @@ const demoMessagesKey = "nexa-demo-messages-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
+const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom:telegram").trim();
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
   live: "онлайн",
@@ -182,6 +183,52 @@ function pickAccentColor(seed: string) {
   const index = Math.abs(seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % accentPalette.length;
   return accentPalette[index];
 }
+function pickFirstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function getTelegramIdentityData(user: SupabaseAuthUser) {
+  const normalizedProviderId = telegramProviderId.replace(/^custom:/, "");
+  const identity = (user.identities ?? []).find(
+    (entry) => entry.provider === telegramProviderId || entry.provider === normalizedProviderId
+  );
+
+  return (identity?.identity_data ?? {}) as Record<string, unknown>;
+}
+
+function getProfileDefaults(user: SupabaseAuthUser) {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const identityData = getTelegramIdentityData(user);
+  const combinedName = [pickFirstText(identityData.first_name), pickFirstText(identityData.last_name)].filter(Boolean).join(" ");
+  const fullName = pickFirstText(
+    metadata.full_name,
+    metadata.name,
+    identityData.full_name,
+    identityData.name,
+    combinedName,
+    user.email?.split("@")[0],
+    "Пользователь Nexa"
+  );
+  const username = normalizeUsername(
+    pickFirstText(
+      metadata.username,
+      metadata.preferred_username,
+      identityData.preferred_username,
+      identityData.username,
+      user.email?.split("@")[0],
+      `user_${user.id.slice(0, 8)}`
+    )
+  ) || `user_${user.id.slice(0, 8)}`;
+
+  return { fullName, username };
+}
+
 function buildPreview(users: AppUser[], currentUserId: string, message: ChatMessage) {
   if (message.authorId === currentUserId) {
     return `Вы: ${message.text}`;
@@ -343,9 +390,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     throw new Error("Supabase клиент не настроен.");
   }
 
-  const metadata = user.user_metadata ?? {};
-  const fallbackName = String(metadata.full_name || user.email?.split("@")[0] || "Студент Nexa");
-  const fallbackUsername = normalizeUsername(String(metadata.username || user.email?.split("@")[0] || `user_${user.id.slice(0, 8)}`)) || `user_${user.id.slice(0, 8)}`;
+  const { fullName, username } = getProfileDefaults(user);
 
   const { data, error } = await supabase
     .from("profiles")
@@ -353,8 +398,8 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
       {
         id: user.id,
         email: user.email ?? null,
-        full_name: fallbackName,
-        username: fallbackUsername,
+        full_name: fullName,
+        username,
         role: "student",
         accent_color: pickAccentColor(user.id),
         bio: "Участник Nexa через GitHub Pages + Supabase."
@@ -688,6 +733,37 @@ function App() {
     }
   }
 
+  async function handleTelegramLogin() {
+    if (!supabase) {
+      setError("Общий вход пока недоступен.");
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: telegramProviderId as never,
+        options: {
+          redirectTo,
+          scopes: "openid profile"
+        }
+      });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+
+      if (data?.url) {
+        window.location.assign(data.url);
+      }
+    } catch {
+      setError("Telegram-вход пока не готов. Сначала подключи Telegram как OIDC-провайдер в Supabase.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleSupabaseSignup() {
     if (!supabase) {
       setError("Supabase пока не настроен. Добавь ключи в GitHub Secrets и локальный env.");
@@ -822,7 +898,7 @@ function App() {
           <span className="eyebrow">private campus messenger</span>
           <h1>Nexa</h1>
           <p className="brand-copy">
-            Закрытый университетский мессенджер с аккуратным интерфейсом, быстрыми чатами и пространством только для своих.
+            Закрытый мессенджер с аккуратным интерфейсом, быстрыми чатами и пространством только для своих.
           </p>
           <div className="hero-note">
             <strong>Открытый код</strong>
@@ -839,7 +915,7 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Можно войти в аккаунт или быстро открыть демо-версию, чтобы сразу посмотреть интерфейс.</p>
+            <p>Можно войти через Telegram, обычный аккаунт или быстро открыть демо-версию, чтобы сразу посмотреть интерфейс.</p>
           </div>
 
           <div className="auth-toggle-row">
@@ -855,6 +931,12 @@ function App() {
                   <p>Пока можно спокойно открыть Nexa через быстрый вход и посмотреть интерфейс без лишней настройки.</p>
                 </div>
               ) : null}
+
+              <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || !supabaseEnabled}>
+                Войти через Telegram
+              </button>
+
+              <div className="divider">или</div>
 
               <div className="auth-toggle-row compact-row">
                 <button type="button" className={`toggle-pill ${authScreen === "login" ? "is-active" : ""}`} onClick={() => setAuthScreen("login")}>Вход</button>

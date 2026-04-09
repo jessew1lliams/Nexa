@@ -808,3 +808,25 @@ button {
 .demo-entry .primary-button {
   width: 100%;
 }
+
+.telegram-button {
+  width: 100%;
+  border: 0;
+  border-radius: 20px;
+  min-height: 54px;
+  padding: 0 22px;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #27a7e7, #1586d1);
+  box-shadow: 0 18px 30px rgba(21, 134, 209, 0.24);
+}
+
+.telegram-button:hover {
+  transform: translateY(-1px);
+}
+
+.telegram-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
