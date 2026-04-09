@@ -553,7 +553,7 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>(supabaseEnabled ? "offline" : "local");
+  const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>("offline");
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [signMode, setSignMode] = useState<SignMode>(supabaseEnabled ? "supabase" : "demo");
   const [fullName, setFullName] = useState("");
@@ -567,14 +567,7 @@ function App() {
   const usersById = useMemo(() => new Map((workspace?.users ?? []).map((user) => [user.id, user])), [workspace?.users]);
 
   useEffect(() => {
-    const demoUserId = loadDemoSessionUserId();
-    if (demoUserId) {
-      const nextWorkspace = buildDemoWorkspace(demoUserId);
-      setWorkspace(nextWorkspace);
-      setSelectedChatId(nextWorkspace.chats[0]?.id ?? null);
-      setConnectionLabel("local");
-      setIsLoading(false);
-    }
+    saveDemoSessionUserId(null);
   }, []);
 
   useEffect(() => {
@@ -624,10 +617,8 @@ function App() {
       }
 
       if (!session?.user) {
-        if (!loadDemoSessionUserId()) {
-          setWorkspace(null);
-        }
-        setConnectionLabel(loadDemoSessionUserId() ? "local" : "offline");
+        setWorkspace(null);
+        setConnectionLabel("offline");
         return;
       }
 
@@ -653,9 +644,6 @@ function App() {
   }, []);
   useEffect(() => {
     if (!workspace || workspace.mode !== "supabase" || !supabase) {
-      if (workspace?.mode === "demo") {
-        setConnectionLabel("local");
-      }
       return;
     }
 
@@ -818,15 +806,13 @@ function App() {
       await supabase.auth.signOut();
     }
 
-    if (workspace?.mode === "demo") {
-      saveDemoSessionUserId(null);
-    }
+    saveDemoSessionUserId(null);
 
     setWorkspace(null);
     setSelectedChatId(null);
     setDraft("");
     setNotice(null);
-    setConnectionLabel(supabaseEnabled ? "offline" : "local");
+    setConnectionLabel("offline");
   }
 
   async function handleSendMessage() {
@@ -915,58 +901,21 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Можно войти через Telegram, обычный аккаунт или быстро открыть демо-версию, чтобы сразу посмотреть интерфейс.</p>
+            <p>Вход в Nexa выполняется только через Telegram.</p>
           </div>
 
-          <div className="auth-toggle-row">
-            <button type="button" className={`toggle-pill ${signMode === "supabase" ? "is-active" : ""}`} onClick={() => setSignMode("supabase")} disabled={!supabaseEnabled}>Аккаунт</button>
-            <button type="button" className={`toggle-pill ${signMode === "demo" ? "is-active" : ""}`} onClick={() => setSignMode("demo")}>Быстрый вход</button>
+          <div className="auth-form auth-single-flow">
+            <div className="helper-card">
+              <strong>Вход через Telegram</strong>
+              <p>Открой свой Telegram-аккаунт и подтверди вход, чтобы сразу попасть в Nexa.</p>
+            </div>
+
+            <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy}>
+              Войти через Telegram
+            </button>
+
+            {!supabaseEnabled ? <p className="error-text">Telegram-вход ещё не активирован для этого сайта.</p> : null}
           </div>
-
-          {signMode === "supabase" ? (
-            <div className="auth-form">
-              {!supabaseEnabled ? (
-                <div className="helper-card">
-                  <strong>Общий вход пока недоступен.</strong>
-                  <p>Пока можно спокойно открыть Nexa через быстрый вход и посмотреть интерфейс без лишней настройки.</p>
-                </div>
-              ) : null}
-
-              <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || !supabaseEnabled}>
-                Войти через Telegram
-              </button>
-
-              <div className="divider">или</div>
-
-              <div className="auth-toggle-row compact-row">
-                <button type="button" className={`toggle-pill ${authScreen === "login" ? "is-active" : ""}`} onClick={() => setAuthScreen("login")}>Вход</button>
-                <button type="button" className={`toggle-pill ${authScreen === "signup" ? "is-active" : ""}`} onClick={() => setAuthScreen("signup")}>Регистрация</button>
-              </div>
-
-              {authScreen === "signup" ? (
-                <>
-                  <input className="field" placeholder="Имя и фамилия" value={fullName} onChange={(event) => setFullName(event.target.value)} />
-                  <input className="field" placeholder="username латиницей" value={username} onChange={(event) => setUsername(event.target.value)} />
-                </>
-              ) : null}
-
-              <input className="field" placeholder="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-              <input className="field" placeholder="Пароль" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-
-              <button type="button" className="primary-button" onClick={authScreen === "login" ? handleSupabaseLogin : handleSupabaseSignup} disabled={isBusy || !supabaseEnabled}>
-                {authScreen === "login" ? "Войти" : "Создать аккаунт"}
-              </button>
-            </div>
-          ) : (
-            <div className="helper-card demo-entry">
-              <strong>Быстрый вход</strong>
-              <p>Открой Nexa без лишних экранов и просто посмотри, как выглядит мессенджер.</p>
-              <button type="button" className="primary-button" onClick={() => handleDemoLogin("demo-1")} disabled={isBusy}>
-                Открыть Nexa
-              </button>
-            </div>
-          )}
-
           {notice ? <p className="notice-text">{notice}</p> : null}
           {error ? <p className="error-text">{error}</p> : null}
         </section>
