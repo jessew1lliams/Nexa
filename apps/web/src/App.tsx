@@ -701,7 +701,7 @@ function App() {
 
   async function handleSupabaseLogin() {
     if (!supabase) {
-      setError("Supabase пока не настроен. Добавь ключи в GitHub Secrets и локальный env.");
+      setError("Сайт ещё не подключён к Supabase.");
       return;
     }
 
@@ -723,7 +723,7 @@ function App() {
 
   async function handleTelegramLogin() {
     if (!supabase) {
-      setError("Общий вход пока недоступен.");
+      setError("Сайт ещё не подключён к Supabase.");
       return;
     }
 
@@ -746,7 +746,7 @@ function App() {
         window.location.assign(data.url);
       }
     } catch {
-      setError("Telegram-вход пока не готов. Сначала подключи Telegram как OIDC-провайдер в Supabase.");
+      setError("Telegram-вход пока не настроен для сайта.");
     } finally {
       setIsBusy(false);
     }
@@ -754,7 +754,7 @@ function App() {
 
   async function handleSupabaseSignup() {
     if (!supabase) {
-      setError("Supabase пока не настроен. Добавь ключи в GitHub Secrets и локальный env.");
+      setError("Сайт ещё не подключён к Supabase.");
       return;
     }
 
@@ -905,16 +905,9 @@ function App() {
           </div>
 
           <div className="auth-form auth-single-flow">
-            <div className="helper-card">
-              <strong>Вход через Telegram</strong>
-              <p>Открой свой Telegram-аккаунт и подтверди вход, чтобы сразу попасть в Nexa.</p>
-            </div>
-
             <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy}>
               Войти через Telegram
             </button>
-
-            {!supabaseEnabled ? <p className="error-text">Telegram-вход ещё не активирован для этого сайта.</p> : null}
           </div>
           {notice ? <p className="notice-text">{notice}</p> : null}
           {error ? <p className="error-text">{error}</p> : null}
