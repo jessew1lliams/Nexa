@@ -193,6 +193,37 @@ function pickFirstText(...values: unknown[]) {
   return "";
 }
 
+function formatUiErrorMessage(error: unknown, fallback: string) {
+  const rawMessage = error instanceof Error ? error.message.trim() : "";
+  const normalized = rawMessage.toLowerCase();
+
+  if (!rawMessage) {
+    return fallback;
+  }
+
+  if (normalized.includes("auth session missing")) {
+    return "\u0412\u0445\u043e\u0434 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b\u0441\u044f. \u041d\u0430\u0436\u043c\u0438 \u00ab\u0412\u043e\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\u00bb \u0435\u0449\u0451 \u0440\u0430\u0437.";
+  }
+
+  if (normalized.includes("failed to fetch") || normalized.includes("network")) {
+    return "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437 \u0447\u0435\u0440\u0435\u0437 \u043c\u0438\u043d\u0443\u0442\u0443.";
+  }
+
+  if (normalized.includes("invalid login credentials")) {
+    return "\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0434\u0430\u043d\u043d\u044b\u0435 \u0432\u0432\u0435\u0434\u0435\u043d\u044b \u043d\u0435\u0432\u0435\u0440\u043d\u043e.";
+  }
+
+  if (normalized.includes("email not confirmed")) {
+    return "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438 \u043f\u043e\u0447\u0442\u0443, \u0430 \u043f\u043e\u0442\u043e\u043c \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0432\u043e\u0439\u0442\u0438 \u0435\u0449\u0451 \u0440\u0430\u0437.";
+  }
+
+  if (/^[\x00-\x7F]+$/.test(rawMessage)) {
+    return fallback;
+  }
+
+  return rawMessage;
+}
+
 function getTelegramIdentityData(user: SupabaseAuthUser) {
   const normalizedProviderId = telegramProviderId.replace(/^custom:/, "");
   const identity = (user.identities ?? []).find(
@@ -600,7 +631,7 @@ function App() {
         }
       } catch (loadError) {
         if (!ignore) {
-          setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить Supabase.");
+          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u043e\u0442\u043a\u0440\u044b\u0442\u044c Nexa \u0435\u0449\u0451 \u0440\u0430\u0437."));
         }
       } finally {
         if (!ignore) {
@@ -632,7 +663,7 @@ function App() {
         }
       } catch (loadError) {
         if (!ignore) {
-          setError(loadError instanceof Error ? loadError.message : "Не удалось обновить сессию.");
+          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u0442\u044c\u0441\u044f \u0435\u0449\u0451 \u0440\u0430\u0437."));
         }
       }
     });
@@ -715,7 +746,7 @@ function App() {
       setError(null);
       setNotice("Вход выполнен. Если общий чат уже настроен в Supabase, сообщения будут общими для всех.");
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Не удалось войти.");
+      setError(formatUiErrorMessage(loginError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0439\u0442\u0438. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
     } finally {
       setIsBusy(false);
     }
@@ -745,8 +776,8 @@ function App() {
       if (data?.url) {
         window.location.assign(data.url);
       }
-    } catch {
-      setError("Telegram-вход пока не настроен для сайта.");
+    } catch (oauthError) {
+      setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
     } finally {
       setIsBusy(false);
     }
@@ -785,7 +816,7 @@ function App() {
       setNotice("Аккаунт создан. Если в Supabase включено подтверждение email, открой письмо и подтверди вход.");
       setAuthScreen("login");
     } catch (signupError) {
-      setError(signupError instanceof Error ? signupError.message : "Не удалось создать аккаунт.");
+      setError(formatUiErrorMessage(signupError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
     } finally {
       setIsBusy(false);
     }
@@ -860,7 +891,7 @@ function App() {
       setDraft("");
       setError(null);
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Сообщение не отправилось.");
+      setError(formatUiErrorMessage(sendError, "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u043e\u0441\u044c. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437."));
     } finally {
       setIsBusy(false);
     }
