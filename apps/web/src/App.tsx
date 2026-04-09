@@ -854,7 +854,7 @@ function App() {
         return;
       }
 
-      setError("?? ??????? ??????? Telegram-????.");
+      setError("Не удалось открыть Telegram-вход.");
     } catch (oauthError) {
       setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."));
     } finally {
@@ -980,9 +980,9 @@ function App() {
     return (
       <div className="center-state">
         <div className="loading-card panel">
-          <span className="eyebrow">Nexa ???????????</span>
-          <h1>?????? Nexa</h1>
-          <p>???????? ????????? ??????, Supabase ? ????????? ???????.</p>
+          <span className="eyebrow">Nexa запускается</span>
+          <h1>Запуск Nexa</h1>
+          <p>Проверка локальной сессии, Supabase и состояния сервиса.</p>
         </div>
       </div>
     );
