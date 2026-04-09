@@ -259,6 +259,13 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
     );
   });
 }
+function readAuthCallbackCode() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return new URLSearchParams(window.location.search).get("code");
+}
 function readAuthCallbackMessage() {
   if (typeof window === "undefined") {
     return null;
@@ -702,12 +709,41 @@ function App() {
 
     async function bootstrapSupabase() {
       try {
-        const {
-          data: { session },
-          error: sessionError
-        } = await withTimeout(client.auth.getSession(), 6000, "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a Supabase \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438.");
-        if (sessionError) {
-          throw new Error(sessionError.message);
+        let session = null;
+        const authCode = readAuthCallbackCode();
+
+        if (authCode) {
+          const { data: exchangeData, error: exchangeError } = await withTimeout(
+            client.auth.exchangeCodeForSession(authCode),
+            12000,
+            "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+          );
+
+          if (exchangeError) {
+            throw new Error(exchangeError.message);
+          }
+
+          session = exchangeData.session ?? null;
+
+          if (!ignore) {
+            window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+          }
+        }
+
+        if (!session) {
+          const {
+            data: sessionData,
+            error: sessionError
+          } = await withTimeout(
+            client.auth.getSession(),
+            8000,
+            "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a Supabase \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+          );
+          if (sessionError) {
+            throw new Error(sessionError.message);
+          }
+
+          session = sessionData.session;
         }
 
         if (ignore) {
@@ -715,11 +751,16 @@ function App() {
         }
 
         if (session?.user) {
-          const nextWorkspace = await withTimeout(fetchSupabaseWorkspace(session.user), 6000, "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438.");
+          const nextWorkspace = await withTimeout(
+            fetchSupabaseWorkspace(session.user),
+            8000,
+            "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+          );
           if (!ignore) {
             setWorkspace(nextWorkspace);
             setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
             setSignMode("supabase");
+            setError(null);
           }
         }
       } catch (loadError) {
@@ -732,7 +773,6 @@ function App() {
         }
       }
     }
-
     bootstrapSupabase();
 
     const { data: authListener } = client.auth.onAuthStateChange(async (_event, session) => {
