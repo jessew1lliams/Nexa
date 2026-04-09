@@ -281,6 +281,25 @@ function readAuthCallbackMessage() {
     "\u0412\u0445\u043e\u0434 \u0447\u0435\u0440\u0435\u0437 Telegram \u043d\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0441\u044f. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437."
   );
 }
+function hasAuthCallbackParams() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
+
+  return [
+    searchParams.get("code"),
+    searchParams.get("error"),
+    searchParams.get("error_description"),
+    hashParams.get("access_token"),
+    hashParams.get("refresh_token"),
+    hashParams.get("provider_token"),
+    hashParams.get("error"),
+    hashParams.get("error_description")
+  ].some(Boolean);
+}
 function getTelegramIdentityData(user: SupabaseAuthUser) {
   const normalizedProviderId = telegramProviderId.replace(/^custom:/, "");
   const identity = (user.identities ?? []).find(
@@ -642,7 +661,7 @@ function App() {
   const [errorVisible, setErrorVisible] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
   const [loadingStatus, setLoadingStatus] = useState("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438, Supabase \u0438 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u044f \u0441\u0435\u0440\u0432\u0438\u0441\u0430.");
   const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>("offline");
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
@@ -700,57 +719,105 @@ function App() {
     }
 
     const client = supabase;
+    const isAuthCallback = hasAuthCallbackParams();
     let ignore = false;
 
-    async function bootstrapSupabase() {
+    async function hydrateWorkspace(
+      session: { user: SupabaseAuthUser },
+      options: { showLoader: boolean; fallback: string; silent: boolean }
+    ) {
+      const { showLoader, fallback, silent } = options;
+
       try {
-        setLoadingStatus("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438.");
-        const {
-          data: sessionData,
-          error: sessionError
-        } = await withTimeout(
-          client.auth.getSession(),
-          15000,
-          "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a Supabase \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
-        );
-        if (sessionError) {
-          throw new Error(sessionError.message);
+        if (showLoader) {
+          setIsLoading(true);
+          setLoadingStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
         }
 
-        const session = sessionData.session;
+        const nextWorkspace = await withTimeout(
+          fetchSupabaseWorkspace(session.user),
+          showLoader ? 25000 : 12000,
+          "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+        );
 
         if (ignore) {
           return;
         }
 
-        if (session?.user) {
-          setLoadingStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
-          const nextWorkspace = await withTimeout(
-            fetchSupabaseWorkspace(session.user),
-            20000,
-            "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
-          );
-          if (!ignore) {
-            setWorkspace(nextWorkspace);
-            setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
-            setSignMode("supabase");
-            setError(null);
-          }
-        }
+        setWorkspace(nextWorkspace);
+        setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
+        setSignMode("supabase");
+        setConnectionLabel("live");
+        setError(null);
+        setNotice(null);
       } catch (loadError) {
-        if (!ignore) {
-          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
+        if (!ignore && !silent) {
+          setError(formatUiErrorMessage(loadError, fallback));
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && showLoader) {
           setIsLoading(false);
         }
       }
     }
-    bootstrapSupabase();
+
+    async function bootstrapAuthCallback() {
+      if (!isAuthCallback) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setLoadingStatus("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram.");
+        const { data: sessionData, error: sessionError } = await withTimeout(
+          client.auth.getSession(),
+          20000,
+          "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+        );
+
+        if (sessionError) {
+          throw new Error(sessionError.message);
+        }
+
+        if (!sessionData.session?.user) {
+          throw new Error("Auth session missing");
+        }
+
+        await hydrateWorkspace(sessionData.session, {
+          showLoader: true,
+          fallback: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
+          silent: false
+        });
+      } catch (loadError) {
+        if (!ignore) {
+          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void bootstrapAuthCallback();
 
     const { data: authListener } = client.auth.onAuthStateChange(async (event, session) => {
-      if (ignore || event === "INITIAL_SESSION") {
+      if (ignore) {
+        return;
+      }
+
+      if (event === "INITIAL_SESSION") {
+        if (isAuthCallback) {
+          return;
+        }
+
+        if (!session?.user) {
+          setIsLoading(false);
+          return;
+        }
+
+        await hydrateWorkspace(session, {
+          showLoader: false,
+          fallback: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
+          silent: true
+        });
         return;
       }
 
@@ -761,24 +828,13 @@ function App() {
         return;
       }
 
-      try {
-        setLoadingStatus("\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
-        const nextWorkspace = await withTimeout(
-          fetchSupabaseWorkspace(session.user),
-            20000,
-          "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
-        );
-        if (!ignore) {
-          setWorkspace(nextWorkspace);
-          setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
-          setError(null);
-          setNotice(null);
-        }
-      } catch (loadError) {
-        if (!ignore) {
-          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
-        }
-      }
+      await hydrateWorkspace(session, {
+        showLoader: event === "SIGNED_IN",
+        fallback: event === "SIGNED_IN"
+          ? "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434."
+          : "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
+        silent: false
+      });
     });
 
     return () => {
