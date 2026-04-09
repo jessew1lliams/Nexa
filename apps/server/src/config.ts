@@ -27,5 +27,6 @@ export const appConfig = {
   telegramClientSecret: env.TELEGRAM_CLIENT_SECRET ?? "",
   telegramRedirectUri: env.TELEGRAM_REDIRECT_URI,
   telegramScopes: env.TELEGRAM_SCOPES,
-  telegramEnabled: Boolean(env.TELEGRAM_CLIENT_ID && env.TELEGRAM_CLIENT_SECRET)
+  telegramEnabled: Boolean(env.TELEGRAM_CLIENT_ID && env.TELEGRAM_CLIENT_SECRET),
+  isProduction: process.env.NODE_ENV === "production"
 } as const;

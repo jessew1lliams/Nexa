@@ -1,6 +1,8 @@
-﻿import type { AuthProvidersResponse, BootstrapPayload, Message, User } from "./types";
+import type { AuthProvidersResponse, BootstrapPayload, Message, User } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+const API_BASE =
+  import.meta.env.VITE_API_URL ??
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001");
 
 function normalizeErrorMessage(payload: unknown): string | null {
   if (!payload) {

@@ -7,13 +7,13 @@ import type { Message } from "./types.js";
 
 let io: Server | null = null;
 
-export function attachRealtime(server: HttpServer, clientOrigin: string) {
-  io = new Server(server, {
+export function attachRealtime(server: HttpServer, clientOrigin: string | null) {
+  io = new Server(server, clientOrigin ? {
     cors: {
       origin: clientOrigin,
       methods: ["GET", "POST"]
     }
-  });
+  } : undefined);
 
   io.use((socket, next) => {
     const token = typeof socket.handshake.auth.token === "string" ? socket.handshake.auth.token : null;

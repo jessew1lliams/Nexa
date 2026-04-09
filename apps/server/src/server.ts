@@ -1,5 +1,10 @@
-﻿import Fastify from "fastify";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import Fastify from "fastify";
 import cors from "@fastify/cors";
+import staticPlugin from "@fastify/static";
 import { z } from "zod";
 
 import { appConfig } from "./config.js";
@@ -44,6 +49,11 @@ async function startServer() {
     logger: true
   });
 
+  const currentFile = fileURLToPath(import.meta.url);
+  const currentDir = dirname(currentFile);
+  const webDistDir = join(currentDir, "../../web/dist");
+  const hasWebDist = existsSync(join(webDistDir, "index.html"));
+
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof z.ZodError) {
       reply.code(400).send({
@@ -62,10 +72,12 @@ async function startServer() {
     });
   });
 
-  await app.register(cors, {
-    origin: appConfig.clientOrigin,
-    credentials: true
-  });
+  if (!appConfig.isProduction) {
+    await app.register(cors, {
+      origin: appConfig.clientOrigin,
+      credentials: true
+    });
+  }
 
   app.get("/health", async () => ({
     status: "ok",
@@ -225,7 +237,26 @@ async function startServer() {
     };
   });
 
-  attachRealtime(app.server, appConfig.clientOrigin);
+  if (hasWebDist) {
+    await app.register(staticPlugin, {
+      root: webDistDir,
+      wildcard: false
+    });
+
+    app.setNotFoundHandler((request, reply) => {
+      const url = request.raw.url ?? "/";
+      if (url.startsWith("/api") || url.startsWith("/health") || url.startsWith("/socket.io")) {
+        reply.code(404).send({
+          message: "Маршрут не найден."
+        });
+        return;
+      }
+
+      reply.sendFile("index.html");
+    });
+  }
+
+  attachRealtime(app.server, appConfig.isProduction ? null : appConfig.clientOrigin);
 
   await app.listen({
     port: appConfig.port,

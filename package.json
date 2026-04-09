@@ -10,6 +10,7 @@
     "dev:server": "npm run dev --workspace @nexa/server",
     "dev:web": "npm run dev --workspace @nexa/web",
     "build": "npm run build --workspace @nexa/server && npm run build --workspace @nexa/web",
-    "check": "npm run check --workspace @nexa/server && npm run check --workspace @nexa/web"
+    "check": "npm run check --workspace @nexa/server && npm run check --workspace @nexa/web",
+    "start": "npm run start --workspace @nexa/server"
   }
 }
