@@ -24,71 +24,71 @@ const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom
 const defaultChatId = "11111111-1111-4111-8111-111111111111";
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
-  live: "онлайн",
-  reconnecting: "переподключение",
-  offline: "офлайн",
-  local: "локально"
+  live: "РѕРЅР»Р°Р№РЅ",
+  reconnecting: "РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёРµ",
+  offline: "РѕС„Р»Р°Р№РЅ",
+  local: "Р»РѕРєР°Р»СЊРЅРѕ"
 } as const;
 const chatKindCopy: Record<ChatKind, string> = {
-  group: "группа",
-  direct: "личный чат",
-  channel: "канал"
+  group: "РіСЂСѓРїРїР°",
+  direct: "Р»РёС‡РЅС‹Р№ С‡Р°С‚",
+  channel: "РєР°РЅР°Р»"
 };
 const demoUsers: AppUser[] = [
   {
     id: "demo-1",
-    name: "Твой аккаунт",
+    name: "РўРІРѕР№ Р°РєРєР°СѓРЅС‚",
     username: "nexa_user",
     role: "student",
     accentColor: "#2795FF",
-    bio: "Личный профиль для знакомства с интерфейсом Nexa."
+    bio: "Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ РґР»СЏ Р·РЅР°РєРѕРјСЃС‚РІР° СЃ РёРЅС‚РµСЂС„РµР№СЃРѕРј Nexa."
   },
   {
     id: "demo-2",
-    name: "Староста группы",
+    name: "РЎС‚Р°СЂРѕСЃС‚Р° РіСЂСѓРїРїС‹",
     username: "group_lead",
     role: "student",
     accentColor: "#F77F5A",
-    bio: "Следит, чтобы важные сообщения не терялись."
+    bio: "РЎР»РµРґРёС‚, С‡С‚РѕР±С‹ РІР°Р¶РЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ РЅРµ С‚РµСЂСЏР»РёСЃСЊ."
   },
   {
     id: "demo-3",
-    name: "Одногруппник",
+    name: "РћРґРЅРѕРіСЂСѓРїРїРЅРёРє",
     username: "student_room",
     role: "student",
     accentColor: "#47B39C",
-    bio: "Всегда на связи в общем чате."
+    bio: "Р’СЃРµРіРґР° РЅР° СЃРІСЏР·Рё РІ РѕР±С‰РµРј С‡Р°С‚Рµ."
   },
   {
     id: "demo-4",
-    name: "Куратор",
+    name: "РљСѓСЂР°С‚РѕСЂ",
     username: "curator",
     role: "curator",
     accentColor: "#6D83F2",
-    bio: "Публикует объявления и важные новости."
+    bio: "РџСѓР±Р»РёРєСѓРµС‚ РѕР±СЉСЏРІР»РµРЅРёСЏ Рё РІР°Р¶РЅС‹Рµ РЅРѕРІРѕСЃС‚Рё."
   }
 ];
 const demoChats: ChatRecord[] = [
   {
     id: "chat-general",
-    title: "Nexa / Общий чат",
+    title: "Nexa / РћР±С‰РёР№ С‡Р°С‚",
     kind: "group",
-    description: "Главный чат группы для общения и новостей.",
+    description: "Р“Р»Р°РІРЅС‹Р№ С‡Р°С‚ РіСЂСѓРїРїС‹ РґР»СЏ РѕР±С‰РµРЅРёСЏ Рё РЅРѕРІРѕСЃС‚РµР№.",
     accentColor: "#2795FF",
     isDefault: true
   },
   {
     id: "chat-labs",
-    title: "Лабы и дедлайны",
+    title: "Р›Р°Р±С‹ Рё РґРµРґР»Р°Р№РЅС‹",
     kind: "group",
-    description: "Вопросы по заданиям, отчётам и защите.",
+    description: "Р’РѕРїСЂРѕСЃС‹ РїРѕ Р·Р°РґР°РЅРёСЏРј, РѕС‚С‡С‘С‚Р°Рј Рё Р·Р°С‰РёС‚Рµ.",
     accentColor: "#F77F5A"
   },
   {
     id: "chat-curator",
-    title: "Куратор / Объявления",
+    title: "РљСѓСЂР°С‚РѕСЂ / РћР±СЉСЏРІР»РµРЅРёСЏ",
     kind: "channel",
-    description: "Важные сообщения, которые лучше не пропускать.",
+    description: "Р’Р°Р¶РЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ, РєРѕС‚РѕСЂС‹Рµ Р»СѓС‡С€Рµ РЅРµ РїСЂРѕРїСѓСЃРєР°С‚СЊ.",
     accentColor: "#47B39C"
   }
 ];
@@ -103,14 +103,14 @@ const demoSeedMessages: Record<string, ChatMessage[]> = {
       id: "msg-1",
       chatId: "chat-general",
       authorId: "demo-4",
-      text: "Добро пожаловать в Nexa. Здесь можно общаться всей группой.",
+      text: "Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ Nexa. Р—РґРµСЃСЊ РјРѕР¶РЅРѕ РѕР±С‰Р°С‚СЊСЃСЏ РІСЃРµР№ РіСЂСѓРїРїРѕР№.",
       sentAt: new Date(Date.now() - 90 * 60_000).toISOString()
     },
     {
       id: "msg-2",
       chatId: "chat-general",
       authorId: "demo-1",
-      text: "Сайт теперь может жить как GitHub Pages-приложение.",
+      text: "РЎР°Р№С‚ С‚РµРїРµСЂСЊ РјРѕР¶РµС‚ Р¶РёС‚СЊ РєР°Рє GitHub Pages-РїСЂРёР»РѕР¶РµРЅРёРµ.",
       sentAt: new Date(Date.now() - 55 * 60_000).toISOString()
     }
   ],
@@ -119,7 +119,7 @@ const demoSeedMessages: Record<string, ChatMessage[]> = {
       id: "msg-3",
       chatId: "chat-labs",
       authorId: "demo-2",
-      text: "Если что, сюда можно кидать вопросы по лабораторным.",
+      text: "Р•СЃР»Рё С‡С‚Рѕ, СЃСЋРґР° РјРѕР¶РЅРѕ РєРёРґР°С‚СЊ РІРѕРїСЂРѕСЃС‹ РїРѕ Р»Р°Р±РѕСЂР°С‚РѕСЂРЅС‹Рј.",
       sentAt: new Date(Date.now() - 42 * 60_000).toISOString()
     }
   ],
@@ -128,7 +128,7 @@ const demoSeedMessages: Record<string, ChatMessage[]> = {
       id: "msg-4",
       chatId: "chat-curator",
       authorId: "demo-4",
-      text: "После подключения Supabase здесь будет общая переписка для всех устройств.",
+      text: "РџРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Supabase Р·РґРµСЃСЊ Р±СѓРґРµС‚ РѕР±С‰Р°СЏ РїРµСЂРµРїРёСЃРєР° РґР»СЏ РІСЃРµС… СѓСЃС‚СЂРѕР№СЃС‚РІ.",
       sentAt: new Date(Date.now() - 30 * 60_000).toISOString()
     }
   ]
@@ -156,7 +156,7 @@ function formatTime(isoTimestamp: string) {
 
 function formatChatStamp(isoTimestamp: string | null) {
   if (!isoTimestamp) {
-    return "Пусто";
+    return "РџСѓСЃС‚Рѕ";
   }
 
   const date = new Date(isoTimestamp);
@@ -203,15 +203,15 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("auth session missing")) {
-    return "Вход через Telegram не подтвердился. Авторизацию можно запустить ещё раз.";
+    return "Р’С…РѕРґ С‡РµСЂРµР· Telegram РЅРµ РїРѕРґС‚РІРµСЂРґРёР»СЃСЏ. РђРІС‚РѕСЂРёР·Р°С†РёСЋ РјРѕР¶РЅРѕ Р·Р°РїСѓСЃС‚РёС‚СЊ РµС‰С‘ СЂР°Р·.";
   }
 
   if (normalized.includes("issued in the future") || normalized.includes("clock for skew") || normalized.includes("device clock")) {
-    return "Время на устройстве отличается от серверного. Нужно проверить дату и время.";
+    return "Р’СЂРµРјСЏ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РѕС‚ СЃРµСЂРІРµСЂРЅРѕРіРѕ. РќСѓР¶РЅРѕ РїСЂРѕРІРµСЂРёС‚СЊ РґР°С‚Сѓ Рё РІСЂРµРјСЏ.";
   }
 
   if (normalized.includes("update your telegram app") || normalized.includes("confirm the login request from the website")) {
-    return "Текущая версия Telegram не поддерживает этот тип входа.";
+    return "РўРµРєСѓС‰Р°СЏ РІРµСЂСЃРёСЏ Telegram РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ СЌС‚РѕС‚ С‚РёРї РІС…РѕРґР°.";
   }
 
   if (
@@ -220,11 +220,11 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     normalized.includes("could not find the table") ||
     normalized.includes("foreign key constraint")
   ) {
-    return "База Nexa в Supabase ещё не подготовлена. Нужно выполнить SQL-схему проекта.";
+    return "Р‘Р°Р·Р° Nexa РІ Supabase РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅР°. РќСѓР¶РЅРѕ РІС‹РїРѕР»РЅРёС‚СЊ SQL-СЃС…РµРјСѓ РїСЂРѕРµРєС‚Р°.";
   }
 
   if (normalized.includes("row-level security")) {
-    return "Доступ к таблицам Nexa в Supabase ещё не настроен.";
+    return "Р”РѕСЃС‚СѓРї Рє С‚Р°Р±Р»РёС†Р°Рј Nexa РІ Supabase РµС‰С‘ РЅРµ РЅР°СЃС‚СЂРѕРµРЅ.";
   }
 
   if (
@@ -235,19 +235,19 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     normalized.includes("database error") ||
     normalized.includes("permission denied")
   ) {
-    return "Правила доступа в Supabase сейчас мешают загрузке чатов. Нужен SQL-патч проекта.";
+    return "РџСЂР°РІРёР»Р° РґРѕСЃС‚СѓРїР° РІ Supabase СЃРµР№С‡Р°СЃ РјРµС€Р°СЋС‚ Р·Р°РіСЂСѓР·РєРµ С‡Р°С‚РѕРІ. РќСѓР¶РµРЅ SQL-РїР°С‚С‡ РїСЂРѕРµРєС‚Р°.";
   }
 
   if (normalized.includes("failed to fetch") || normalized.includes("network")) {
-    return "Связь с сервером сейчас недоступна. Авторизацию можно повторить позже.";
+    return "РЎРІСЏР·СЊ СЃ СЃРµСЂРІРµСЂРѕРј СЃРµР№С‡Р°СЃ РЅРµРґРѕСЃС‚СѓРїРЅР°. РђРІС‚РѕСЂРёР·Р°С†РёСЋ РјРѕР¶РЅРѕ РїРѕРІС‚РѕСЂРёС‚СЊ РїРѕР·Р¶Рµ.";
   }
 
   if (normalized.includes("invalid login credentials")) {
-    return "Аккаунт не найден или данные введены неверно.";
+    return "РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ РёР»Рё РґР°РЅРЅС‹Рµ РІРІРµРґРµРЅС‹ РЅРµРІРµСЂРЅРѕ.";
   }
 
   if (normalized.includes("email not confirmed")) {
-    return "Почта ещё не подтверждена.";
+    return "РџРѕС‡С‚Р° РµС‰С‘ РЅРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅР°.";
   }
 
   if (/^[\x00-\x7F]+$/.test(rawMessage)) {
@@ -356,7 +356,7 @@ function getProfileDefaults(user: SupabaseAuthUser) {
     identityData.name,
     combinedName,
     user.email?.split("@")[0],
-    "Пользователь Nexa"
+    "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ Nexa"
   );
   const username = normalizeUsername(
     pickFirstText(
@@ -372,13 +372,27 @@ function getProfileDefaults(user: SupabaseAuthUser) {
   return { fullName, username };
 }
 
+function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
+  const { fullName, username } = getProfileDefaults(user);
+
+  return {
+    id: user.id,
+    email: user.email ?? undefined,
+    name: fullName,
+    username,
+    role: "student",
+    accentColor: pickAccentColor(user.id),
+    bio: "Участник Nexa."
+  };
+}
+
 function buildPreview(users: AppUser[], currentUserId: string, message: ChatMessage) {
   if (message.authorId === currentUserId) {
-    return `Вы: ${message.text}`;
+    return `Р’С‹: ${message.text}`;
   }
 
   const author = users.find((user) => user.id === message.authorId);
-  const authorName = author?.name.split(" ")[0] ?? "Кто-то";
+  const authorName = author?.name.split(" ")[0] ?? "РљС‚Рѕ-С‚Рѕ";
   return `${authorName}: ${message.text}`;
 }
 
@@ -402,7 +416,7 @@ function buildWorkspace(args: {
 }) {
   const currentUser = args.users.find((user) => user.id === args.currentUserId);
   if (!currentUser) {
-    throw new Error("Не удалось определить текущего пользователя.");
+    throw new Error("РќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.");
   }
 
   const chats = sortChats(
@@ -413,7 +427,7 @@ function buildWorkspace(args: {
       return {
         ...chat,
         memberIds: args.memberIdsByChat[chat.id] ?? [],
-        lastMessagePreview: lastMessage ? buildPreview(args.users, currentUser.id, lastMessage) : "Пока без сообщений",
+        lastMessagePreview: lastMessage ? buildPreview(args.users, currentUser.id, lastMessage) : "РџРѕРєР° Р±РµР· СЃРѕРѕР±С‰РµРЅРёР№",
         lastMessageAt: lastMessage?.sentAt ?? null,
         unreadCount: 0
       } satisfies ChatSummary;
@@ -441,7 +455,7 @@ function mapProfileRow(row: SupabaseProfileRow): AppUser {
     username: row.username,
     role: row.role ?? "student",
     accentColor: row.accent_color,
-    bio: row.bio ?? "Участник Nexa."
+    bio: row.bio ?? "РЈС‡Р°СЃС‚РЅРёРє Nexa."
   };
 }
 
@@ -505,7 +519,7 @@ function buildDemoWorkspace(userId: string) {
     memberIdsByChat: demoMembersByChat,
     messagesByChat: loadDemoMessages(),
     mode: "demo",
-    syncLabel: "Лёгкий ознакомительный режим Nexa.",
+    syncLabel: "Р›С‘РіРєРёР№ РѕР·РЅР°РєРѕРјРёС‚РµР»СЊРЅС‹Р№ СЂРµР¶РёРј Nexa.",
     universityName
   });
 }
@@ -530,7 +544,7 @@ function appendDemoMessage(chatId: string, authorId: string, text: string) {
 
 async function ensureSupabaseProfile(user: SupabaseAuthUser) {
   if (!supabase) {
-    throw new Error("Supabase клиент не настроен.");
+    throw new Error("Supabase РєР»РёРµРЅС‚ РЅРµ РЅР°СЃС‚СЂРѕРµРЅ.");
   }
 
   const { fullName, username } = getProfileDefaults(user);
@@ -545,7 +559,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
         username,
         role: "student",
         accent_color: pickAccentColor(user.id),
-        bio: "Участник Nexa через GitHub Pages + Supabase."
+        bio: "РЈС‡Р°СЃС‚РЅРёРє Nexa С‡РµСЂРµР· GitHub Pages + Supabase."
       },
       { onConflict: "id" }
     )
@@ -591,7 +605,17 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     throw new Error("\u0421\u043b\u0443\u0436\u0431\u0430 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0430.");
   }
 
-  const profile = await ensureSupabaseProfile(user);
+  let profile = buildAuthFallbackProfile(user);
+
+  try {
+    profile = await ensureSupabaseProfile(user);
+  } catch (profileError) {
+    if (looksLikeSupabaseAccessIssue(profileError)) {
+      return buildSupabaseFallbackWorkspace(profile, "");
+    }
+
+    throw profileError;
+  }
 
   try {
     await ensureDefaultMemberships(user.id);
@@ -634,7 +658,12 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     await Promise.all([
       supabase.from("chats").select("*").in("id", chatIds),
       supabase.from("chat_members").select("chat_id,user_id").in("chat_id", chatIds),
-      supabase.from("messages").select("*").in("chat_id", chatIds).order("created_at", { ascending: true })
+      supabase
+        .from("messages")
+        .select("*")
+        .in("chat_id", chatIds)
+        .order("created_at", { ascending: false })
+        .limit(Math.max(60, chatIds.length * 24))
     ]);
 
   const workspaceError = chatError ?? memberError ?? messageError;
@@ -680,6 +709,9 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     acc[message.chatId] = [...(acc[message.chatId] ?? []), message];
     return acc;
   }, {});
+  Object.values(messagesByChat).forEach((messages) => {
+    messages.sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
+  });
 
   return buildWorkspace({
     currentUserId: user.id,
@@ -723,19 +755,87 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
-  const [loadingStatus, setLoadingStatus] = useState("\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438, Supabase \u0438 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u044f \u0441\u0435\u0440\u0432\u0438\u0441\u0430.");
+  const [, setLoadingStatus] = useState("Подключение к Nexa.");
   const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>("offline");
-  const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
-  const [signMode, setSignMode] = useState<SignMode>(supabaseEnabled ? "supabase" : "demo");
-  const [fullName, setFullName] = useState("");
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [directoryResults, setDirectoryResults] = useState<AppUser[]>([]);
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
   const realtimeChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+
+  const matchesSearch = (query: string, ...values: Array<string | null | undefined>) => {
+    if (!query) {
+      return true;
+    }
+
+    return values.some((value) => value?.toLowerCase().includes(query));
+  };
 
   const activeChat = workspace?.chats.find((chat) => chat.id === selectedChatId) ?? workspace?.chats[0] ?? null;
   const activeMessages = activeChat ? workspace?.messagesByChat[activeChat.id] ?? [] : [];
   const usersById = useMemo(() => new Map((workspace?.users ?? []).map((user) => [user.id, user])), [workspace?.users]);
+  const searchValue = searchQuery.trim().toLowerCase();
+
+  const localDirectoryMatches = useMemo(() => {
+    if (!workspace || !searchValue) {
+      return [] as AppUser[];
+    }
+
+    return workspace.users.filter((user) => {
+      if (user.id === workspace.currentUser.id) {
+        return false;
+      }
+
+      return matchesSearch(searchValue, user.name, user.username, user.bio, user.email);
+    });
+  }, [workspace, searchValue]);
+
+  const visibleUsers = useMemo(() => {
+    if (!searchValue) {
+      return [] as AppUser[];
+    }
+
+    return directoryResults;
+  }, [directoryResults, searchValue]);
+
+  const visibleChats = useMemo(() => {
+    if (!workspace) {
+      return [] as ChatSummary[];
+    }
+
+    if (!searchValue) {
+      return workspace.chats;
+    }
+
+    return workspace.chats.filter((chat) =>
+      matchesSearch(searchValue, chat.title, chat.description, chat.lastMessagePreview)
+    );
+  }, [workspace, searchValue]);
+
+  const activeChatMembers = useMemo(() => {
+    if (!activeChat) {
+      return [] as AppUser[];
+    }
+
+    return activeChat.memberIds.map((memberId) => usersById.get(memberId)).filter(Boolean) as AppUser[];
+  }, [activeChat, usersById]);
+
+  const activeChatSubtitle = useMemo(() => {
+    if (!activeChat) {
+      return "";
+    }
+
+    if (activeChat.kind === "direct") {
+      return activeChat.description || "Личный чат";
+    }
+
+    if (activeChat.description) {
+      return activeChat.description;
+    }
+
+    return `${activeChatMembers.length} участников`;
+  }, [activeChat, activeChatMembers]);
+
+  const backgroundActivity = Boolean(isBusy || isDirectoryLoading || connectionLabel === "reconnecting");
 
   useEffect(() => {
     saveDemoSessionUserId(null);
@@ -774,6 +874,83 @@ function App() {
   }, [error]);
 
   useEffect(() => {
+    if (!workspace) {
+      return;
+    }
+
+    if (selectedChatId && workspace.chats.some((chat) => chat.id === selectedChatId)) {
+      return;
+    }
+
+    setSelectedChatId(workspace.chats[0]?.id ?? null);
+  }, [workspace, selectedChatId]);
+
+  useEffect(() => {
+    if (!workspace || !searchValue) {
+      setDirectoryResults([]);
+      setIsDirectoryLoading(false);
+      return;
+    }
+
+    if (workspace.mode !== "supabase" || !supabase) {
+      setDirectoryResults(localDirectoryMatches);
+      setIsDirectoryLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setDirectoryResults(localDirectoryMatches);
+    setIsDirectoryLoading(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const sanitized = searchValue.replace(/[%_]/g, "").trim();
+        if (!sanitized) {
+          if (!ignore) {
+            setDirectoryResults(localDirectoryMatches);
+            setIsDirectoryLoading(false);
+          }
+          return;
+        }
+
+        const pattern = `%${sanitized}%`;
+        const client = supabase;
+        if (!client) {
+          return;
+        }
+        const [nameResult, usernameResult] = await Promise.all([
+          client.from("profiles").select("*").ilike("full_name", pattern).neq("id", workspace.currentUser.id).limit(8),
+          client.from("profiles").select("*").ilike("username", pattern).neq("id", workspace.currentUser.id).limit(8)
+        ]);
+
+        if (ignore) {
+          return;
+        }
+
+        const merged = new Map(localDirectoryMatches.map((user) => [user.id, user]));
+        for (const row of ((nameResult.data as SupabaseProfileRow[] | null) ?? []).concat((usernameResult.data as SupabaseProfileRow[] | null) ?? [])) {
+          merged.set(row.id, mapProfileRow(row));
+        }
+
+        setDirectoryResults(Array.from(merged.values()).slice(0, 8));
+      } catch {
+        if (!ignore) {
+          setDirectoryResults(localDirectoryMatches);
+        }
+      } finally {
+        if (!ignore) {
+          setIsDirectoryLoading(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [workspace, searchValue, localDirectoryMatches]);
+
+  useEffect(() => {
     if (!supabaseEnabled || !supabase) {
       setIsLoading(false);
       return;
@@ -782,6 +959,13 @@ function App() {
     const client = supabase;
     const isAuthCallback = hasAuthCallbackParams();
     let ignore = false;
+    let callbackResolved = !isAuthCallback;
+
+    if (isAuthCallback) {
+      setIsLoading(true);
+      setError(null);
+      setLoadingStatus("Завершение входа через Telegram.");
+    }
 
     async function hydrateWorkspace(
       session: { user: SupabaseAuthUser },
@@ -792,13 +976,13 @@ function App() {
       try {
         if (showLoader) {
           setIsLoading(true);
-          setLoadingStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa.");
+          setLoadingStatus("Загрузка данных Nexa.");
         }
 
         const nextWorkspace = await withTimeout(
           fetchSupabaseWorkspace(session.user),
           showLoader ? 25000 : 12000,
-          "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0434\u0430\u043d\u043d\u044b\u0445 Nexa \u0437\u0430\u043d\u044f\u043b\u0430 \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
+          "Подключение к Supabase заняло слишком много времени."
         );
 
         if (ignore) {
@@ -806,58 +990,37 @@ function App() {
         }
 
         setWorkspace(nextWorkspace);
-        setSelectedChatId((current) => current ?? nextWorkspace.chats[0]?.id ?? null);
-        setSignMode("supabase");
+        setSelectedChatId((current) =>
+          current && nextWorkspace.chats.some((chat) => chat.id === current)
+            ? current
+            : nextWorkspace.chats[0]?.id ?? null
+        );
         setConnectionLabel("live");
         setError(null);
-        setNotice(null);
-      } catch (loadError) {
-        if (!ignore && !silent) {
-          setError(formatUiErrorMessage(loadError, fallback));
-        }
-      } finally {
-        if (!ignore && showLoader) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    async function bootstrapAuthCallback() {
-      if (!isAuthCallback) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setLoadingStatus("\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram.");
-        const { data: sessionData, error: sessionError } = await withTimeout(
-          client.auth.getSession(),
-          20000,
-          "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0432\u0445\u043e\u0434\u0430 \u0447\u0435\u0440\u0435\u0437 Telegram \u0437\u0430\u043d\u044f\u043b\u043e \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043c\u043d\u043e\u0433\u043e \u0432\u0440\u0435\u043c\u0435\u043d\u0438."
-        );
-
-        if (sessionError) {
-          throw new Error(sessionError.message);
-        }
-
-        if (!sessionData.session?.user) {
-          throw new Error("Auth session missing");
-        }
-
-        await hydrateWorkspace(sessionData.session, {
-          showLoader: true,
-          fallback: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
-          silent: false
-        });
       } catch (loadError) {
         if (!ignore) {
-          setError(formatUiErrorMessage(loadError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434."));
+          const fallbackWorkspace = buildSupabaseFallbackWorkspace(buildAuthFallbackProfile(session.user), "");
+          setWorkspace((current) => current ?? fallbackWorkspace);
+          setSelectedChatId((current) => current ?? fallbackWorkspace.chats[0]?.id ?? null);
+          setConnectionLabel("reconnecting");
+          setError(null);
+        }
+      } finally {
+        if (!ignore) {
+          callbackResolved = true;
           setIsLoading(false);
         }
       }
     }
 
-    void bootstrapAuthCallback();
+    const callbackTimer = isAuthCallback
+      ? window.setTimeout(() => {
+          if (!ignore && !callbackResolved) {
+            setIsLoading(false);
+            setError("Не удалось завершить вход.");
+          }
+        }, 18000)
+      : null;
 
     const { data: authListener } = client.auth.onAuthStateChange(async (event, session) => {
       if (ignore) {
@@ -865,44 +1028,45 @@ function App() {
       }
 
       if (event === "INITIAL_SESSION") {
-        if (isAuthCallback) {
-          return;
-        }
-
         if (!session?.user) {
-          setIsLoading(false);
+          if (!isAuthCallback) {
+            setIsLoading(false);
+          }
           return;
         }
 
         await hydrateWorkspace(session, {
           showLoader: false,
-          fallback: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
-          silent: true
+          fallback: isAuthCallback ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
+          silent: !isAuthCallback
         });
         return;
       }
 
       if (!session?.user) {
         setWorkspace(null);
+        setSelectedChatId(null);
         setConnectionLabel("offline");
         setIsLoading(false);
         return;
       }
 
       await hydrateWorkspace(session, {
-        showLoader: event === "SIGNED_IN",
-        fallback: event === "SIGNED_IN"
-          ? "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c \u0432\u0445\u043e\u0434."
-          : "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0432\u0445\u043e\u0434.",
+        showLoader: false,
+        fallback: event === "SIGNED_IN" ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
         silent: false
       });
     });
 
     return () => {
       ignore = true;
+      if (callbackTimer) {
+        window.clearTimeout(callbackTimer);
+      }
       authListener.subscription.unsubscribe();
     };
   }, []);
+
   useEffect(() => {
     if (!workspace || workspace.mode !== "supabase" || !supabase) {
       return;
@@ -960,35 +1124,45 @@ function App() {
     };
   }, [workspace, usersById]);
 
-  async function handleSupabaseLogin() {
+  async function refreshWorkspaceFromSession(preferredChatId?: string) {
+    if (!supabase) {
+      throw new Error("Служба Supabase ещё не подключена.");
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      throw new Error(authError.message);
+    }
+
+    if (!authData.user) {
+      throw new Error("Auth session missing");
+    }
+
+    const nextWorkspace = await withTimeout(
+      fetchSupabaseWorkspace(authData.user),
+      25000,
+      "Подключение к Supabase заняло слишком много времени."
+    );
+
+    setWorkspace(nextWorkspace);
+    setSelectedChatId(
+      preferredChatId && nextWorkspace.chats.some((chat) => chat.id === preferredChatId)
+        ? preferredChatId
+        : nextWorkspace.chats[0]?.id ?? null
+    );
+    setConnectionLabel("live");
+    setError(null);
+  }
+
+  async function handleTelegramLogin() {
     if (!supabase) {
       setError("Сайт ещё не подключён к Supabase.");
       return;
     }
 
     setIsBusy(true);
-    try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (signInError) {
-        throw new Error(signInError.message);
-      }
-
-      setError(null);
-      setNotice("Вход выполнен. Если общий чат уже настроен в Supabase, сообщения будут общими для всех.");
-    } catch (loginError) {
-      setError(formatUiErrorMessage(loginError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0432\u043e\u0439\u0442\u0438."));
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleTelegramLogin() {
-    if (!supabase) {
-      setError("\u0421\u0430\u0439\u0442 \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0451\u043d \u043a Supabase.");
-      return;
-    }
-
-    setIsBusy(true);
+    setIsLoading(true);
+    setLoadingStatus("Открытие входа через Telegram.");
     setError(null);
     try {
       const redirectTo = `${window.location.origin}${window.location.pathname}`;
@@ -1011,59 +1185,123 @@ function App() {
 
       setError("Не удалось открыть Telegram-вход.");
     } catch (oauthError) {
-      setError(formatUiErrorMessage(oauthError, "Telegram-\u0432\u0445\u043e\u0434 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."));
+      setError(formatUiErrorMessage(oauthError, "Telegram-вход временно недоступен."));
+      setIsLoading(false);
     } finally {
       setIsBusy(false);
     }
   }
 
-  async function handleSupabaseSignup() {
-    if (!supabase) {
-      setError("Сайт ещё не подключён к Supabase.");
+  async function handleOpenProfileChat(target: AppUser) {
+    if (!workspace) {
       return;
     }
 
-    const cleanUsername = normalizeUsername(username);
-    if (!fullName.trim() || !cleanUsername) {
-      setError("Укажи имя и username латиницей, чтобы создать аккаунт.");
+    const existingDirectChat = workspace.chats.find(
+      (chat) =>
+        chat.kind === "direct" &&
+        chat.memberIds.length === 2 &&
+        chat.memberIds.includes(workspace.currentUser.id) &&
+        chat.memberIds.includes(target.id)
+    );
+
+    if (existingDirectChat) {
+      setSelectedChatId(existingDirectChat.id);
+      setSearchQuery("");
+      return;
+    }
+
+    if (workspace.mode !== "supabase" || !supabase) {
+      setError("Поиск пользователей доступен после подключения к Supabase.");
       return;
     }
 
     setIsBusy(true);
-    try {
-      const { error: signupError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-            username: cleanUsername
-          }
-        }
-      });
+    setLoadingStatus("Подготовка диалога.");
+    setNotice(null);
+    setError(null);
 
-      if (signupError) {
-        throw new Error(signupError.message);
+    try {
+      const { data: memberRows, error: memberError } = await supabase
+        .from("chat_members")
+        .select("chat_id,user_id")
+        .in("user_id", [workspace.currentUser.id, target.id]);
+
+      if (memberError) {
+        throw new Error(memberError.message);
       }
 
-      setError(null);
-      setNotice("Аккаунт создан. Если в Supabase включено подтверждение email, открой письмо и подтверди вход.");
-      setAuthScreen("login");
-    } catch (signupError) {
-      setError(formatUiErrorMessage(signupError, "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442."));
+      const membershipsByChat = new Map<string, Set<string>>();
+      for (const row of ((memberRows as SupabaseChatMemberRow[] | null) ?? [])) {
+        const chatId = String(row.chat_id);
+        const members = membershipsByChat.get(chatId) ?? new Set<string>();
+        members.add(String(row.user_id));
+        membershipsByChat.set(chatId, members);
+      }
+
+      let directChatId: string | null = null;
+      const sharedChatIds = Array.from(membershipsByChat.entries())
+        .filter(([, members]) => members.has(workspace.currentUser.id) && members.has(target.id))
+        .map(([chatId]) => chatId);
+
+      if (sharedChatIds.length) {
+        const { data: chatRows, error: chatLookupError } = await supabase
+          .from("chats")
+          .select("*")
+          .in("id", sharedChatIds)
+          .eq("kind", "direct")
+          .limit(1);
+
+        if (chatLookupError) {
+          throw new Error(chatLookupError.message);
+        }
+
+        directChatId = (chatRows as SupabaseChatRow[] | null)?.[0]?.id ?? null;
+      }
+
+      if (!directChatId) {
+        const { data: chatRow, error: createChatError } = await supabase
+          .from("chats")
+          .insert({
+            title: target.name,
+            kind: "direct",
+            description: `@${target.username}`,
+            accent_color: target.accentColor,
+            is_default: false
+          })
+          .select()
+          .single();
+
+        if (createChatError) {
+          throw new Error(createChatError.message);
+        }
+
+        directChatId = String((chatRow as SupabaseChatRow).id);
+
+        const { error: membershipInsertError } = await supabase
+          .from("chat_members")
+          .upsert(
+            [
+              { chat_id: directChatId, user_id: workspace.currentUser.id },
+              { chat_id: directChatId, user_id: target.id }
+            ],
+            { onConflict: "chat_id,user_id", ignoreDuplicates: true }
+          );
+
+        if (membershipInsertError) {
+          throw new Error(membershipInsertError.message);
+        }
+      }
+
+      await refreshWorkspaceFromSession(directChatId);
+      setSearchQuery("");
+      setDirectoryResults([]);
+    } catch (openError) {
+      setError(formatUiErrorMessage(openError, "Не удалось открыть диалог."));
     } finally {
       setIsBusy(false);
+      setIsLoading(false);
     }
-  }
-
-  function handleDemoLogin(userId: string) {
-    saveDemoSessionUserId(userId);
-    const nextWorkspace = buildDemoWorkspace(userId);
-    setWorkspace(nextWorkspace);
-    setSelectedChatId(nextWorkspace.chats[0]?.id ?? null);
-    setConnectionLabel("local");
-    setError(null);
-    setNotice("Добро пожаловать в Nexa.");
   }
 
   async function handleLogout() {
@@ -1076,6 +1314,8 @@ function App() {
     setWorkspace(null);
     setSelectedChatId(null);
     setDraft("");
+    setSearchQuery("");
+    setDirectoryResults([]);
     setNotice(null);
     setConnectionLabel("offline");
   }
@@ -1103,8 +1343,7 @@ function App() {
         setSelectedChatId(activeChat.id);
         setDraft("");
         setError(null);
-        setNotice(`Демо-сообщение сохранено на этом устройстве в ${formatTime(message.sentAt)}.`);
-        return;
+        return message;
       }
 
       if (!supabase) {
@@ -1125,40 +1364,12 @@ function App() {
       setDraft("");
       setError(null);
     } catch (sendError) {
-      setError(formatUiErrorMessage(sendError, "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u043e\u0441\u044c."));
+      setError(formatUiErrorMessage(sendError, "Сообщение не отправилось."));
     } finally {
       setIsBusy(false);
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="center-state">
-        <div className="loading-card panel">
-          <div className="loading-card-shell">
-            <div className="loading-copy">
-              <span className="eyebrow">{"\u004e\u0065\u0078\u0061 \u0437\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442\u0441\u044f"}</span>
-              <h1>{"\u0417\u0430\u043f\u0443\u0441\u043a Nexa"}</h1>
-              <p>{loadingStatus}</p>
-            </div>
-
-            <div className="loading-visual" aria-hidden="true">
-              <div className="loading-orbit">
-                <span className="loading-orb orb-a" />
-                <span className="loading-orb orb-b" />
-                <span className="loading-orb orb-c" />
-              </div>
-              <div className="loading-bars">
-                <span className="loading-bar bar-a" />
-                <span className="loading-bar bar-b" />
-                <span className="loading-bar bar-c" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
   if (!workspace) {
     return (
       <div className="login-shell">
@@ -1183,14 +1394,15 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Вход в Nexa выполняется только через Telegram.</p>
+            <p>Вход в Nexa выполняется через Telegram.</p>
           </div>
 
           <div className="auth-form auth-single-flow">
-            <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy}>
-              Войти через Telegram
+            <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading}>
+              {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
             </button>
           </div>
+
           {notice ? <p className="notice-text">{notice}</p> : null}
           {error ? <p className={`error-text${errorVisible ? " is-visible" : ""}`}>{error}</p> : null}
         </section>
@@ -1199,66 +1411,160 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar panel">
-        <div className="sidebar-top">
-          <div>
-            <span className="eyebrow">nexa online</span>
-            <h1>Nexa</h1>
-          </div>
-          <span className={`status-chip status-${connectionLabel}`}>{connectionCopy[connectionLabel]}</span>
+    <div className="workspace-shell">
+      <aside className="workspace-nav">
+        <button type="button" className="nav-icon-button nav-brand" aria-label="Nexa">
+          <span>N</span>
+        </button>
+
+        <div className="workspace-nav-group">
+          <button type="button" className="nav-icon-button is-active" aria-label="Чаты">
+            <span>≡</span>
+            <small>Чаты</small>
+          </button>
+          <button
+            type="button"
+            className={`nav-icon-button ${searchValue ? "is-active" : ""}`}
+            aria-label="Поиск пользователей"
+            onClick={() => window.document.getElementById("nexa-search")?.focus()}
+          >
+            <span>⌕</span>
+            <small>Поиск</small>
+          </button>
         </div>
 
-        <div className="search-shell">
-          <input className="search-input" value="Приватное пространство Nexa" readOnly />
-        </div>
-
-        <div className="sidebar-pills">
-          <span className="soft-pill">{workspace.universityName}</span>
-          <span className="soft-pill">{workspace.mode === "supabase" ? "живой режим" : "предпросмотр"}</span>
-        </div>
-
-        <div className="chat-list">
-          {workspace.chats.map((chat) => (
-            <button type="button" key={chat.id} className={`chat-row ${activeChat?.id === chat.id ? "is-active" : ""}`} onClick={() => setSelectedChatId(chat.id)}>
-              <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
-              <span className="chat-copy">
-                <span className="chat-copy-head">
-                  <strong>{chat.title}</strong>
-                  <span>{formatChatStamp(chat.lastMessageAt)}</span>
-                </span>
-                <span className="chat-preview">{chat.lastMessagePreview}</span>
-              </span>
-            </button>
-          ))}
+        <div className="workspace-nav-bottom">
+          <button type="button" className="nav-icon-button" aria-label="Выйти" onClick={handleLogout}>
+            <span>↩</span>
+            <small>Выйти</small>
+          </button>
         </div>
       </aside>
 
-      <main className="conversation panel">
+      <aside className="workspace-sidebar">
+        <div className="sidebar-searchbar">
+          <input
+            id="nexa-search"
+            className="sidebar-search-input"
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Поиск"
+            autoComplete="off"
+          />
+          <span className="sidebar-search-avatar avatar" style={{ backgroundColor: workspace.currentUser.accentColor }}>
+            {getInitials(workspace.currentUser.name)}
+          </span>
+        </div>
+
+        <div className="thread-list">
+          {searchValue ? (
+            <>
+              <section className="sidebar-section">
+                <div className="section-label-row">
+                  <span className="section-label">Люди</span>
+                  {isDirectoryLoading ? (
+                    <span className="mini-loader" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  ) : null}
+                </div>
+                {visibleUsers.length ? (
+                  visibleUsers.map((user) => (
+                    <button type="button" key={user.id} className="directory-row" onClick={() => void handleOpenProfileChat(user)}>
+                      <span className="avatar" style={{ backgroundColor: user.accentColor }}>{getInitials(user.name)}</span>
+                      <span className="directory-copy">
+                        <strong>{user.name}</strong>
+                        <span>@{user.username}</span>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="empty-search">Совпадений среди зарегистрированных пользователей пока нет.</p>
+                )}
+              </section>
+
+              <section className="sidebar-section">
+                <span className="section-label">Чаты</span>
+                {visibleChats.length ? (
+                  visibleChats.map((chat) => (
+                    <button
+                      type="button"
+                      key={chat.id}
+                      className={`thread-row ${activeChat?.id === chat.id ? "is-active" : ""}`}
+                      onClick={() => {
+                        setSelectedChatId(chat.id);
+                        setSearchQuery("");
+                      }}
+                    >
+                      <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
+                      <span className="thread-copy">
+                        <span className="thread-copy-head">
+                          <strong>{chat.title}</strong>
+                          <span>{formatChatStamp(chat.lastMessageAt)}</span>
+                        </span>
+                        <span className="thread-preview">{chat.lastMessagePreview}</span>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="empty-search">Подходящих чатов по этому запросу пока нет.</p>
+                )}
+              </section>
+            </>
+          ) : visibleChats.length ? (
+            visibleChats.map((chat) => (
+              <button type="button" key={chat.id} className={`thread-row ${activeChat?.id === chat.id ? "is-active" : ""}`} onClick={() => setSelectedChatId(chat.id)}>
+                <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
+                <span className="thread-copy">
+                  <span className="thread-copy-head">
+                    <strong>{chat.title}</strong>
+                    <span>{formatChatStamp(chat.lastMessageAt)}</span>
+                  </span>
+                  <span className="thread-preview">{chat.lastMessagePreview}</span>
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="sidebar-empty-note">
+              <span className="section-label">Чаты</span>
+              <p>После обновления SQL-схемы и правил доступа Supabase общий чат появится автоматически.</p>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <main className="workspace-main">
         {activeChat ? (
           <>
-            <header className="conversation-top">
-              <div className="conversation-meta">
+            <header className="conversation-header">
+              <div className="conversation-head-main">
                 <span className="avatar large" style={{ backgroundColor: activeChat.accentColor }}>{getInitials(activeChat.title)}</span>
-                <div>
+                <div className="conversation-head-copy">
                   <h2>{activeChat.title}</h2>
-                  <p>{activeChat.description}</p>
+                  <p>{activeChatSubtitle}</p>
                 </div>
               </div>
-              <div className="conversation-badges">
-                <span className="soft-pill">{chatKindCopy[activeChat.kind]}</span>
-                <span className="soft-pill">{activeChat.memberIds.length} участников</span>
-              </div>
+
+              {backgroundActivity ? (
+                <div className="background-loader" aria-label="Загрузка в фоне">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              ) : null}
             </header>
 
-            <div className="message-list">
+            <div className="conversation-scroll">
               {activeMessages.map((message) => {
                 const author = usersById.get(message.authorId);
                 const isOwnMessage = message.authorId === workspace.currentUser.id;
 
                 return (
                   <article key={message.id} className={`message-bubble ${isOwnMessage ? "own" : ""}`}>
-                    {!isOwnMessage ? <span className="message-author" style={{ color: author?.accentColor }}>{author?.name ?? "Неизвестный участник"}</span> : null}
+                    {!isOwnMessage ? <span className="message-author" style={{ color: author?.accentColor }}>{author?.name ?? "Участник Nexa"}</span> : null}
                     <p>{message.text}</p>
                     <span className="message-time">{formatTime(message.sentAt)}</span>
                   </article>
@@ -1266,61 +1572,43 @@ function App() {
               })}
             </div>
 
-            <footer className="composer">
-              <div className="composer-stack">
+            <footer className="composer-shell">
+              <div className="composer-field-shell">
                 <textarea
-                  className="composer-input"
-                  placeholder="Напиши сообщение в Nexa..."
+                  className="composer-input-dark"
+                  placeholder="Сообщение"
                   value={draft}
                   onChange={(event) => {
                     setDraft(event.target.value.slice(0, maxMessageLength));
-                    if (error) setError(null);
+                    if (error) {
+                      setError(null);
+                    }
                   }}
                   rows={1}
                 />
-                <div className="composer-meta">
-                  <span className="char-counter">{draft.length}/{maxMessageLength}</span>
-                </div>
+                <span className="char-counter">{draft.length}/{maxMessageLength}</span>
               </div>
-              <button type="button" className="primary-button compact" onClick={handleSendMessage} disabled={isBusy || !draft.trim()}>Отправить</button>
+              <button type="button" className="send-button" onClick={handleSendMessage} disabled={isBusy || !draft.trim()}>
+                Отправить
+              </button>
             </footer>
           </>
         ) : (
-          <div className="empty-state">
-            <h2>{"\u0427\u0430\u0442\u044b \u043f\u043e\u043a\u0430 \u043d\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b"}</h2>
-            <p>{"\u041f\u043e\u0441\u043b\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f SQL-\u0441\u0445\u0435\u043c\u044b \u0438 \u043f\u0440\u0430\u0432\u0438\u043b \u0434\u043e\u0441\u0442\u0443\u043f\u0430 Supabase \u043e\u0431\u0449\u0438\u0439 \u0447\u0430\u0442 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438."}</p>
+          <div className="conversation-empty">
+            {backgroundActivity ? (
+              <div className="background-loader background-loader-center" aria-label="Загрузка в фоне">
+                <span />
+                <span />
+                <span />
+              </div>
+            ) : null}
+            <span className="conversation-empty-chip">Выберите, кому хотелось бы написать</span>
           </div>
         )}
+
+        {notice ? <div className="workspace-toast toast-notice">{notice}</div> : null}
+        {error ? <div className={`workspace-toast toast-error${errorVisible ? " is-visible" : ""}`}>{error}</div> : null}
       </main>
-
-      <aside className="details-rail panel">
-        <div className="profile-card">
-          <span className="avatar xl" style={{ backgroundColor: workspace.currentUser.accentColor }}>{getInitials(workspace.currentUser.name)}</span>
-          <h2>{workspace.currentUser.name}</h2>
-          <p>@{workspace.currentUser.username}</p>
-          <p>{workspace.currentUser.bio}</p>
-        </div>
-
-        <div className="detail-section">
-          <span className="eyebrow">пространство nexa</span>
-          <p>{workspace.syncLabel}</p>
-          <p>{workspace.mode === "supabase" ? "Переписка остаётся актуальной на разных устройствах." : "Это спокойный режим для знакомства с интерфейсом и общим стилем приложения."}</p>
-        </div>
-
-        <div className="detail-section">
-          <span className="eyebrow">о проекте</span>
-          <ul className="detail-list">
-            <li>Лаконичный интерфейс без лишнего шума.</li>
-            <li>Чаты и сообщения собраны в одном приватном пространстве.</li>
-            <li>Весь код проекта доступен на GitHub.</li>
-          </ul>
-        </div>
-
-        {notice ? <p className="notice-text">{notice}</p> : null}
-        {error ? <p className="error-text">{error}</p> : null}
-
-        <button type="button" className="ghost-button" onClick={handleLogout}>Выйти</button>
-      </aside>
     </div>
   );
 }

@@ -7,7 +7,7 @@ create table if not exists public.profiles (
   username text not null unique,
   role text not null default 'student' check (role in ('student', 'curator', 'teacher')),
   accent_color text not null default '#2795FF',
-  bio text not null default 'Участник Nexa.',
+  bio text not null default 'РЈС‡Р°СЃС‚РЅРёРє Nexa.',
   created_at timestamptz not null default now()
 );
 
@@ -88,6 +88,12 @@ create policy "chats_select_member"
     or is_default = true
   );
 
+drop policy if exists "chats_insert_authenticated" on public.chats;
+create policy "chats_insert_authenticated"
+  on public.chats for insert
+  to authenticated
+  with check (true);
+
 drop policy if exists "chat_members_select_member" on public.chat_members;
 drop policy if exists "chat_members_select_authenticated" on public.chat_members;
 create policy "chat_members_select_authenticated"
@@ -96,10 +102,11 @@ create policy "chat_members_select_authenticated"
   using (true);
 
 drop policy if exists "chat_members_insert_self" on public.chat_members;
-create policy "chat_members_insert_self"
+drop policy if exists "chat_members_insert_authenticated" on public.chat_members;
+create policy "chat_members_insert_authenticated"
   on public.chat_members for insert
   to authenticated
-  with check (user_id = auth.uid());
+  with check (true);
 
 drop policy if exists "messages_select_member" on public.messages;
 create policy "messages_select_member"
@@ -131,9 +138,9 @@ create policy "messages_insert_member"
 insert into public.chats (id, title, kind, description, accent_color, is_default)
 values (
   '11111111-1111-4111-8111-111111111111',
-  'Nexa / Общий чат',
+  'Nexa / РћР±С‰РёР№ С‡Р°С‚',
   'group',
-  'Главный чат сообщества Nexa.',
+  'Р“Р»Р°РІРЅС‹Р№ С‡Р°С‚ СЃРѕРѕР±С‰РµСЃС‚РІР° Nexa.',
   '#2795FF',
   true
 )
