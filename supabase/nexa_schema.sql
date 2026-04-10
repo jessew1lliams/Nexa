@@ -89,18 +89,11 @@ create policy "chats_select_member"
   );
 
 drop policy if exists "chat_members_select_member" on public.chat_members;
-create policy "chat_members_select_member"
+drop policy if exists "chat_members_select_authenticated" on public.chat_members;
+create policy "chat_members_select_authenticated"
   on public.chat_members for select
   to authenticated
-  using (
-    user_id = auth.uid()
-    or exists (
-      select 1
-      from public.chat_members cm
-      where cm.chat_id = chat_members.chat_id
-        and cm.user_id = auth.uid()
-    )
-  );
+  using (true);
 
 drop policy if exists "chat_members_insert_self" on public.chat_members;
 create policy "chat_members_insert_self"
