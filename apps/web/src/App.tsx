@@ -1144,7 +1144,7 @@ function App() {
 
     void bootstrapSession();
 
-    const { data: authListener } = client.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = client.auth.onAuthStateChange((event, session) => {
       if (ignore) {
         return;
       }
@@ -1161,11 +1161,17 @@ function App() {
         return;
       }
 
-      await hydrateWorkspace(session, {
-        showLoader: false,
-        fallback: event === "SIGNED_IN" ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
-        silent: false
-      });
+      window.setTimeout(() => {
+        if (ignore) {
+          return;
+        }
+
+        void hydrateWorkspace(session, {
+          showLoader: false,
+          fallback: event === "SIGNED_IN" ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
+          silent: false
+        });
+      }, 0);
     });
 
     return () => {
