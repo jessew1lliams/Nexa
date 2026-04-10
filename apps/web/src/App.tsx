@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
 
 import { supabase, supabaseEnabled } from "./supabase";
@@ -17,6 +18,7 @@ import type {
 
 const demoSessionKey = "nexa-demo-session-v1";
 const demoMessagesKey = "nexa-demo-messages-v1";
+const profileOverridesKey = "nexa-profile-overrides-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
@@ -375,7 +377,7 @@ function getProfileDefaults(user: SupabaseAuthUser) {
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
   const { fullName, username } = getProfileDefaults(user);
 
-  return {
+  return applyProfileOverride({
     id: user.id,
     email: user.email ?? undefined,
     name: fullName,
@@ -383,7 +385,22 @@ function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
     role: "student",
     accentColor: pickAccentColor(user.id),
     bio: "Участник Nexa."
-  };
+  });
+}
+
+function renderAvatar(options: {
+  label: string;
+  accentColor: string;
+  imageUrl?: string;
+  className?: string;
+}) {
+  const { label, accentColor, imageUrl, className } = options;
+
+  return (
+    <span className={className ? `avatar ${className}` : "avatar"} style={{ backgroundColor: accentColor }}>
+      {imageUrl ? <img className="avatar-image" src={imageUrl} alt={label} /> : <span className="avatar-fallback">{getInitials(label)}</span>}
+    </span>
+  );
 }
 
 function buildPreview(users: AppUser[], currentUserId: string, message: ChatMessage) {
@@ -448,15 +465,16 @@ function buildWorkspace(args: {
 }
 
 function mapProfileRow(row: SupabaseProfileRow): AppUser {
-  return {
+  return applyProfileOverride({
     id: row.id,
     email: row.email ?? undefined,
     name: row.full_name,
     username: row.username,
     role: row.role ?? "student",
     accentColor: row.accent_color,
-    bio: row.bio ?? "РЈС‡Р°СЃС‚РЅРёРє Nexa."
-  };
+    bio: row.bio ?? "РЈС‡Р°СЃС‚РЅРёРє Nexa.",
+    avatarUrl: row.avatar_url ?? undefined
+  });
 }
 
 function mapChatRow(row: SupabaseChatRow): ChatRecord {
@@ -493,6 +511,47 @@ function saveDemoSessionUserId(userId: string | null) {
   localStorage.setItem(demoSessionKey, userId);
 }
 
+function readProfileOverrides() {
+  if (typeof window === "undefined") {
+    return {} as Record<string, Partial<Pick<AppUser, "name" | "avatarUrl">>>;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(profileOverridesKey);
+    return raw ? (JSON.parse(raw) as Record<string, Partial<Pick<AppUser, "name" | "avatarUrl">>>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function getStoredProfileOverride(userId: string) {
+  return readProfileOverrides()[userId] ?? {};
+}
+
+function saveProfileOverride(userId: string, override: Partial<Pick<AppUser, "name" | "avatarUrl">>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const current = readProfileOverrides();
+  current[userId] = {
+    ...current[userId],
+    ...override
+  };
+
+  window.localStorage.setItem(profileOverridesKey, JSON.stringify(current));
+}
+
+function applyProfileOverride(user: AppUser) {
+  const override = getStoredProfileOverride(user.id);
+
+  return {
+    ...user,
+    name: override.name?.trim() || user.name,
+    avatarUrl: override.avatarUrl ?? user.avatarUrl
+  } satisfies AppUser;
+}
+
 function loadDemoMessages() {
   try {
     const raw = localStorage.getItem(demoMessagesKey);
@@ -511,10 +570,11 @@ function saveDemoMessages(messagesByChat: Record<string, ChatMessage[]>) {
 }
 
 function buildDemoWorkspace(userId: string) {
-  const currentUser = demoUsers.find((user) => user.id === userId) ?? demoUsers[0];
+  const users = demoUsers.map(applyProfileOverride);
+  const currentUser = users.find((user) => user.id === userId) ?? users[0];
   return buildWorkspace({
     currentUserId: currentUser.id,
-    users: demoUsers,
+    users,
     chatRecords: demoChats,
     memberIdsByChat: demoMembersByChat,
     messagesByChat: loadDemoMessages(),
@@ -548,23 +608,32 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
   }
 
   const { fullName, username } = getProfileDefaults(user);
+  const storedOverride = getStoredProfileOverride(user.id);
+  const basePayload = {
+    id: user.id,
+    email: user.email ?? null,
+    full_name: fullName,
+    username,
+    role: "student",
+    accent_color: pickAccentColor(user.id),
+    bio: "РЈС‡Р°СЃС‚РЅРёРє Nexa С‡РµСЂРµР· GitHub Pages + Supabase."
+  };
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("profiles")
     .upsert(
       {
-        id: user.id,
-        email: user.email ?? null,
-        full_name: fullName,
-        username,
-        role: "student",
-        accent_color: pickAccentColor(user.id),
-        bio: "РЈС‡Р°СЃС‚РЅРёРє Nexa С‡РµСЂРµР· GitHub Pages + Supabase."
+        ...basePayload,
+        avatar_url: storedOverride.avatarUrl ?? null
       },
       { onConflict: "id" }
     )
     .select()
     .single();
+
+  if (error && error.message.toLowerCase().includes("avatar_url")) {
+    ({ data, error } = await supabase.from("profiles").upsert(basePayload, { onConflict: "id" }).select().single());
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -760,7 +829,12 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [directoryResults, setDirectoryResults] = useState<AppUser[]>([]);
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
+  const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [profileAvatarDraft, setProfileAvatarDraft] = useState<string | undefined>(undefined);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
   const realtimeChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const matchesSearch = (query: string, ...values: Array<string | null | undefined>) => {
     if (!query) {
@@ -840,6 +914,18 @@ function App() {
   useEffect(() => {
     saveDemoSessionUserId(null);
   }, []);
+
+  useEffect(() => {
+    if (!workspace) {
+      setProfileNameDraft("");
+      setProfileAvatarDraft(undefined);
+      setIsProfilePanelOpen(false);
+      return;
+    }
+
+    setProfileNameDraft(workspace.currentUser.name);
+    setProfileAvatarDraft(workspace.currentUser.avatarUrl);
+  }, [workspace]);
 
   useEffect(() => {
     const callbackMessage = readAuthCallbackMessage();
@@ -1304,6 +1390,125 @@ function App() {
     }
   }
 
+  function applyCurrentUserProfile(nextName: string, nextAvatarUrl?: string) {
+    setWorkspace((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextUsers = current.users.map((user) =>
+        user.id === current.currentUser.id
+          ? {
+              ...user,
+              name: nextName,
+              avatarUrl: nextAvatarUrl
+            }
+          : user
+      );
+
+      return buildWorkspace({
+        currentUserId: current.currentUser.id,
+        users: nextUsers,
+        chatRecords: current.chatRecords,
+        memberIdsByChat: current.memberIdsByChat,
+        messagesByChat: current.messagesByChat,
+        mode: current.mode,
+        syncLabel: current.syncLabel,
+        universityName: current.universityName
+      });
+    });
+  }
+
+  function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setError("Подходит только изображение.");
+      return;
+    }
+
+    if (file.size > 1_500_000) {
+      setError("Аватарка слишком тяжёлая. Лучше выбрать изображение до 1.5 МБ.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : undefined;
+      if (!result) {
+        setError("Не удалось прочитать изображение.");
+        return;
+      }
+
+      setProfileAvatarDraft(result);
+      setError(null);
+    };
+    reader.onerror = () => {
+      setError("Не удалось прочитать изображение.");
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  async function handleSaveProfile() {
+    if (!workspace) {
+      return;
+    }
+
+    const nextName = profileNameDraft.trim();
+    if (!nextName) {
+      setError("Имя не должно быть пустым.");
+      return;
+    }
+
+    setIsProfileSaving(true);
+    setError(null);
+
+    try {
+      if (workspace.mode === "supabase" && supabase) {
+        const payload = {
+          full_name: nextName,
+          avatar_url: profileAvatarDraft ?? null
+        };
+
+        const { error: updateError } = await supabase
+          .from("profiles")
+          .update(payload)
+          .eq("id", workspace.currentUser.id);
+
+        if (updateError) {
+          const normalized = updateError.message.toLowerCase();
+          if (normalized.includes("avatar_url")) {
+            const { error: fallbackError } = await supabase
+              .from("profiles")
+              .update({ full_name: nextName })
+              .eq("id", workspace.currentUser.id);
+
+            if (fallbackError) {
+              throw fallbackError;
+            }
+          } else {
+            throw updateError;
+          }
+        }
+      }
+
+      saveProfileOverride(workspace.currentUser.id, {
+        name: nextName,
+        avatarUrl: profileAvatarDraft
+      });
+      applyCurrentUserProfile(nextName, profileAvatarDraft);
+      setIsProfilePanelOpen(false);
+    } catch (profileError) {
+      setError(formatUiErrorMessage(profileError, "Профиль не сохранился."));
+    } finally {
+      setIsProfileSaving(false);
+    }
+  }
+
   async function handleLogout() {
     if (workspace?.mode === "supabase" && supabase) {
       await supabase.auth.signOut();
@@ -1434,9 +1639,77 @@ function App() {
         </div>
 
         <div className="workspace-nav-bottom">
-          <button type="button" className="nav-icon-button" aria-label="Выйти" onClick={handleLogout}>
-            <span>↩</span>
-            <small>Выйти</small>
+          <button
+            type="button"
+            className={`nav-profile-trigger ${isProfilePanelOpen ? "is-open" : ""}`}
+            aria-label="Профиль"
+            aria-expanded={isProfilePanelOpen}
+            aria-controls="nexa-profile-drawer"
+            onClick={() => setIsProfilePanelOpen((current) => !current)}
+          >
+            {renderAvatar({
+              label: workspace.currentUser.name,
+              accentColor: workspace.currentUser.accentColor,
+              imageUrl: workspace.currentUser.avatarUrl,
+              className: "nav-profile-avatar"
+            })}
+            <small>Профиль</small>
+          </button>
+        </div>
+      </aside>
+
+      {isProfilePanelOpen ? (
+        <button type="button" className="profile-drawer-backdrop" aria-label="Закрыть профиль" onClick={() => setIsProfilePanelOpen(false)} />
+      ) : null}
+
+      <aside id="nexa-profile-drawer" className={`profile-drawer ${isProfilePanelOpen ? "is-open" : ""}`}>
+        <div className="profile-drawer-head">
+          {renderAvatar({
+            label: profileNameDraft || workspace.currentUser.name,
+            accentColor: workspace.currentUser.accentColor,
+            imageUrl: profileAvatarDraft,
+            className: "profile-drawer-avatar"
+          })}
+          <div className="profile-drawer-copy">
+            <strong>{workspace.currentUser.username ? `@${workspace.currentUser.username}` : "Nexa"}</strong>
+            <span>{workspace.currentUser.role === "curator" ? "Куратор" : "Участник Nexa"}</span>
+          </div>
+          <button type="button" className="profile-drawer-close" aria-label="Закрыть" onClick={() => setIsProfilePanelOpen(false)}>
+            ×
+          </button>
+        </div>
+
+        <label className="profile-field">
+          <span>Имя</span>
+          <input
+            type="text"
+            value={profileNameDraft}
+            onChange={(event) => setProfileNameDraft(event.target.value.slice(0, 48))}
+            placeholder="Имя в Nexa"
+          />
+        </label>
+
+        <div className="profile-field">
+          <span>Аватарка</span>
+          <div className="profile-action-row">
+            <input ref={avatarInputRef} className="hidden-file-input" type="file" accept="image/*" onChange={handleAvatarFileChange} />
+            <button type="button" className="profile-secondary-button" onClick={() => avatarInputRef.current?.click()}>
+              Выбрать фото
+            </button>
+            {profileAvatarDraft ? (
+              <button type="button" className="profile-secondary-button is-muted" onClick={() => setProfileAvatarDraft(undefined)}>
+                Убрать
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="profile-drawer-footer">
+          <button type="button" className="profile-primary-button" onClick={() => void handleSaveProfile()} disabled={isProfileSaving}>
+            {isProfileSaving ? "Сохранение..." : "Сохранить"}
+          </button>
+          <button type="button" className="profile-secondary-button is-danger" onClick={() => void handleLogout()}>
+            Выйти
           </button>
         </div>
       </aside>
@@ -1452,9 +1725,12 @@ function App() {
             placeholder="Поиск"
             autoComplete="off"
           />
-          <span className="sidebar-search-avatar avatar" style={{ backgroundColor: workspace.currentUser.accentColor }}>
-            {getInitials(workspace.currentUser.name)}
-          </span>
+          {renderAvatar({
+            label: workspace.currentUser.name,
+            accentColor: workspace.currentUser.accentColor,
+            imageUrl: workspace.currentUser.avatarUrl,
+            className: "sidebar-search-avatar"
+          })}
         </div>
 
         <div className="thread-list">
@@ -1474,7 +1750,11 @@ function App() {
                 {visibleUsers.length ? (
                   visibleUsers.map((user) => (
                     <button type="button" key={user.id} className="directory-row" onClick={() => void handleOpenProfileChat(user)}>
-                      <span className="avatar" style={{ backgroundColor: user.accentColor }}>{getInitials(user.name)}</span>
+                      {renderAvatar({
+                        label: user.name,
+                        accentColor: user.accentColor,
+                        imageUrl: user.avatarUrl
+                      })}
                       <span className="directory-copy">
                         <strong>{user.name}</strong>
                         <span>@{user.username}</span>
@@ -1499,7 +1779,10 @@ function App() {
                         setSearchQuery("");
                       }}
                     >
-                      <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
+                      {renderAvatar({
+                        label: chat.title,
+                        accentColor: chat.accentColor
+                      })}
                       <span className="thread-copy">
                         <span className="thread-copy-head">
                           <strong>{chat.title}</strong>
@@ -1517,7 +1800,10 @@ function App() {
           ) : visibleChats.length ? (
             visibleChats.map((chat) => (
               <button type="button" key={chat.id} className={`thread-row ${activeChat?.id === chat.id ? "is-active" : ""}`} onClick={() => setSelectedChatId(chat.id)}>
-                <span className="avatar" style={{ backgroundColor: chat.accentColor }}>{getInitials(chat.title)}</span>
+                {renderAvatar({
+                  label: chat.title,
+                  accentColor: chat.accentColor
+                })}
                 <span className="thread-copy">
                   <span className="thread-copy-head">
                     <strong>{chat.title}</strong>
@@ -1530,7 +1816,7 @@ function App() {
           ) : (
             <div className="sidebar-empty-note">
               <span className="section-label">Чаты</span>
-              <p>После обновления SQL-схемы и правил доступа Supabase общий чат появится автоматически.</p>
+              <p>Найдите зарегистрированного пользователя через поиск сверху и откройте первый диалог.</p>
             </div>
           )}
         </div>
@@ -1541,7 +1827,11 @@ function App() {
           <>
             <header className="conversation-header">
               <div className="conversation-head-main">
-                <span className="avatar large" style={{ backgroundColor: activeChat.accentColor }}>{getInitials(activeChat.title)}</span>
+                {renderAvatar({
+                  label: activeChat.title,
+                  accentColor: activeChat.accentColor,
+                  className: "large"
+                })}
                 <div className="conversation-head-copy">
                   <h2>{activeChat.title}</h2>
                   <p>{activeChatSubtitle}</p>
@@ -1595,13 +1885,6 @@ function App() {
           </>
         ) : (
           <div className="conversation-empty">
-            {backgroundActivity ? (
-              <div className="background-loader background-loader-center" aria-label="Загрузка в фоне">
-                <span />
-                <span />
-                <span />
-              </div>
-            ) : null}
             <span className="conversation-empty-chip">Выберите, кому хотелось бы написать</span>
           </div>
         )}

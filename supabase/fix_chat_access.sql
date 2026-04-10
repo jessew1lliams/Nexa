@@ -1,3 +1,6 @@
+alter table public.profiles
+  add column if not exists avatar_url text;
+
 drop policy if exists "chats_insert_authenticated" on public.chats;
 create policy "chats_insert_authenticated"
   on public.chats for insert

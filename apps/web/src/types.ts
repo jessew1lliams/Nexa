@@ -10,6 +10,7 @@ export interface AppUser {
   accentColor: string;
   bio: string;
   email?: string;
+  avatarUrl?: string;
 }
 
 export interface ChatRecord {
@@ -56,6 +57,7 @@ export interface SupabaseProfileRow {
   role: UserRole | null;
   accent_color: string;
   bio: string | null;
+  avatar_url?: string | null;
   created_at?: string;
 }
 
