@@ -1067,7 +1067,7 @@ function App() {
 
         const nextWorkspace = await withTimeout(
           fetchSupabaseWorkspace(session.user),
-          showLoader ? 25000 : 12000,
+          showLoader ? 30000 : 20000,
           "Подключение к Supabase заняло слишком много времени."
         );
 
@@ -1099,34 +1099,58 @@ function App() {
       }
     }
 
+    async function bootstrapSession() {
+      try {
+        const { data, error: sessionError } = await client.auth.getSession();
+        if (ignore) {
+          return;
+        }
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        if (!data.session?.user) {
+          setIsLoading(false);
+          return;
+        }
+
+        callbackResolved = true;
+        await hydrateWorkspace(data.session, {
+          showLoader: isAuthCallback,
+          fallback: isAuthCallback ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
+          silent: !isAuthCallback
+        });
+      } catch (sessionError) {
+        if (ignore) {
+          return;
+        }
+
+        setIsLoading(false);
+        if (isAuthCallback) {
+          setError(formatUiErrorMessage(sessionError, "Не удалось завершить вход."));
+        }
+      }
+    }
+
     const callbackTimer = isAuthCallback
       ? window.setTimeout(() => {
           if (!ignore && !callbackResolved) {
             setIsLoading(false);
             setError("Не удалось завершить вход.");
           }
-        }, 18000)
+        }, 30000)
       : null;
+
+    void bootstrapSession();
 
     const { data: authListener } = client.auth.onAuthStateChange(async (event, session) => {
       if (ignore) {
         return;
       }
 
-      if (event === "INITIAL_SESSION") {
-        if (!session?.user) {
-          if (!isAuthCallback) {
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        await hydrateWorkspace(session, {
-          showLoader: false,
-          fallback: isAuthCallback ? "Не удалось завершить вход." : "Не удалось восстановить вход.",
-          silent: !isAuthCallback
-        });
-        return;
+      if (event === "TOKEN_REFRESHED") {
+        setConnectionLabel("live");
       }
 
       if (!session?.user) {
@@ -1215,17 +1239,17 @@ function App() {
       throw new Error("Служба Supabase ещё не подключена.");
     }
 
-    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const { data: authData, error: authError } = await supabase.auth.getSession();
     if (authError) {
       throw new Error(authError.message);
     }
 
-    if (!authData.user) {
+    if (!authData.session?.user) {
       throw new Error("Auth session missing");
     }
 
     const nextWorkspace = await withTimeout(
-      fetchSupabaseWorkspace(authData.user),
+      fetchSupabaseWorkspace(authData.session.user),
       25000,
       "Подключение к Supabase заняло слишком много времени."
     );
