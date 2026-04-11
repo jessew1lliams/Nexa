@@ -19,6 +19,8 @@ import type {
 const demoSessionKey = "nexa-demo-session-v1";
 const demoMessagesKey = "nexa-demo-messages-v1";
 const profileOverridesKey = "nexa-profile-overrides-v1";
+const rememberedUsersKey = "nexa-remembered-users-v1";
+const workspaceCacheKey = "nexa-workspace-cache-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
@@ -140,6 +142,16 @@ type ConnectionLabel = keyof typeof connectionCopy;
 type AuthScreen = "login" | "signup";
 type SignMode = "supabase" | "demo";
 
+type RememberedDeviceUser = Pick<AppUser, "id" | "name" | "username" | "accentColor" | "avatarUrl" | "role"> & {
+  lastSeenAt: string;
+};
+
+type CachedWorkspacePayload = {
+  workspace: WorkspaceData;
+  selectedChatId: string | null;
+  cachedAt: string;
+};
+
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -170,6 +182,30 @@ function formatChatStamp(isoTimestamp: string | null) {
 
   if (sameDay) {
     return formatTime(isoTimestamp);
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short"
+  }).format(date);
+}
+
+function formatRememberedStamp(isoTimestamp: string) {
+  const date = new Date(isoTimestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  if (diffHours < 1) {
+    return "Сейчас на устройстве";
+  }
+
+  if (diffHours < 24) {
+    return `${diffHours} ч назад`;
   }
 
   return new Intl.DateTimeFormat("ru-RU", {
@@ -542,6 +578,101 @@ function saveProfileOverride(userId: string, override: Partial<Pick<AppUser, "na
   window.localStorage.setItem(profileOverridesKey, JSON.stringify(current));
 }
 
+function readRememberedUsers() {
+  if (typeof window === "undefined") {
+    return [] as RememberedDeviceUser[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(rememberedUsersKey);
+    const parsed = raw ? (JSON.parse(raw) as RememberedDeviceUser[]) : [];
+
+    return parsed
+      .filter((entry) => entry?.id && entry?.name && entry?.username)
+      .sort((left, right) => new Date(right.lastSeenAt).getTime() - new Date(left.lastSeenAt).getTime())
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+function rememberDeviceUser(user: AppUser) {
+  if (typeof window === "undefined") {
+    return [] as RememberedDeviceUser[];
+  }
+
+  const nextEntry: RememberedDeviceUser = {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    accentColor: user.accentColor,
+    avatarUrl: user.avatarUrl,
+    role: user.role,
+    lastSeenAt: new Date().toISOString()
+  };
+
+  const merged = [nextEntry, ...readRememberedUsers().filter((entry) => entry.id !== user.id)].slice(0, 6);
+  window.localStorage.setItem(rememberedUsersKey, JSON.stringify(merged));
+  return merged;
+}
+
+function buildCachedWorkspace(workspace: WorkspaceData): WorkspaceData {
+  const cachedMessagesByChat = Object.fromEntries(
+    Object.entries(workspace.messagesByChat).map(([chatId, messages]) => [chatId, messages.slice(-16)])
+  );
+  const cachedUsers = [workspace.currentUser, ...workspace.users.filter((user) => user.id !== workspace.currentUser.id)].slice(0, 80);
+
+  return {
+    ...workspace,
+    users: cachedUsers,
+    messagesByChat: cachedMessagesByChat
+  };
+}
+
+function loadWorkspaceCache() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(workspaceCacheKey);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as CachedWorkspacePayload | null;
+    if (!parsed?.workspace?.currentUser?.id) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkspaceCache(workspace: WorkspaceData, selectedChatId: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const payload: CachedWorkspacePayload = {
+    workspace: buildCachedWorkspace(workspace),
+    selectedChatId,
+    cachedAt: new Date().toISOString()
+  };
+
+  window.localStorage.setItem(workspaceCacheKey, JSON.stringify(payload));
+}
+
+function clearWorkspaceCache() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(workspaceCacheKey);
+}
+
 function applyProfileOverride(user: AppUser) {
   const override = getStoredProfileOverride(user.id);
 
@@ -816,8 +947,8 @@ function applyIncomingMessage(current: WorkspaceData, message: ChatMessage) {
 }
 
 function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceData | null>(() => loadWorkspaceCache()?.workspace ?? null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(() => loadWorkspaceCache()?.selectedChatId ?? null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorVisible, setErrorVisible] = useState(false);
@@ -825,7 +956,9 @@ function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
   const [, setLoadingStatus] = useState("Подключение к Nexa.");
-  const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>("offline");
+  const [connectionLabel, setConnectionLabel] = useState<ConnectionLabel>(() =>
+    loadWorkspaceCache()?.workspace ? "reconnecting" : "offline"
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [directoryResults, setDirectoryResults] = useState<AppUser[]>([]);
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
@@ -833,8 +966,11 @@ function App() {
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [profileAvatarDraft, setProfileAvatarDraft] = useState<string | undefined>(undefined);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [rememberedUsers, setRememberedUsers] = useState<RememberedDeviceUser[]>(() => readRememberedUsers());
+  const [hasActiveSession, setHasActiveSession] = useState(false);
   const realtimeChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const workspaceRef = useRef<WorkspaceData | null>(workspace);
 
   const matchesSearch = (query: string, ...values: Array<string | null | undefined>) => {
     if (!query) {
@@ -912,6 +1048,10 @@ function App() {
   const backgroundActivity = Boolean(isBusy || isDirectoryLoading || connectionLabel === "reconnecting");
 
   useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
+
+  useEffect(() => {
     saveDemoSessionUserId(null);
   }, []);
 
@@ -926,6 +1066,36 @@ function App() {
     setProfileNameDraft(workspace.currentUser.name);
     setProfileAvatarDraft(workspace.currentUser.avatarUrl);
   }, [workspace]);
+
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase") {
+      return;
+    }
+
+    setRememberedUsers(rememberDeviceUser(workspace.currentUser));
+  }, [
+    workspace?.mode,
+    workspace?.currentUser.id,
+    workspace?.currentUser.name,
+    workspace?.currentUser.username,
+    workspace?.currentUser.avatarUrl,
+    workspace?.currentUser.role,
+    workspace?.currentUser.accentColor
+  ]);
+
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      saveWorkspaceCache(workspace, selectedChatId);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [workspace, selectedChatId]);
 
   useEffect(() => {
     const callbackMessage = readAuthCallbackMessage();
@@ -1081,13 +1251,16 @@ function App() {
             ? current
             : nextWorkspace.chats[0]?.id ?? null
         );
+        setHasActiveSession(true);
         setConnectionLabel("live");
+        setNotice(null);
         setError(null);
       } catch (loadError) {
         if (!ignore) {
           const fallbackWorkspace = buildSupabaseFallbackWorkspace(buildAuthFallbackProfile(session.user), "");
           setWorkspace((current) => current ?? fallbackWorkspace);
           setSelectedChatId((current) => current ?? fallbackWorkspace.chats[0]?.id ?? null);
+          setHasActiveSession(true);
           setConnectionLabel("reconnecting");
           setError(null);
         }
@@ -1111,6 +1284,7 @@ function App() {
         }
 
         if (!data.session?.user) {
+          setHasActiveSession(false);
           setIsLoading(false);
           return;
         }
@@ -1126,6 +1300,10 @@ function App() {
           return;
         }
 
+        setHasActiveSession(false);
+        if (workspaceRef.current?.mode === "supabase") {
+          setConnectionLabel("offline");
+        }
         setIsLoading(false);
         if (isAuthCallback) {
           setError(formatUiErrorMessage(sessionError, "Не удалось завершить вход."));
@@ -1150,14 +1328,20 @@ function App() {
       }
 
       if (event === "TOKEN_REFRESHED") {
+        setHasActiveSession(Boolean(session?.user));
         setConnectionLabel("live");
       }
 
       if (!session?.user) {
-        setWorkspace(null);
-        setSelectedChatId(null);
+        setHasActiveSession(false);
         setConnectionLabel("offline");
         setIsLoading(false);
+
+        if (!workspaceRef.current || workspaceRef.current.mode !== "supabase") {
+          setWorkspace(null);
+          setSelectedChatId(null);
+        }
+
         return;
       }
 
@@ -1184,7 +1368,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!workspace || workspace.mode !== "supabase" || !supabase) {
+    if (!workspace || workspace.mode !== "supabase" || !supabase || !hasActiveSession) {
       return;
     }
 
@@ -1238,7 +1422,7 @@ function App() {
     return () => {
       channel.unsubscribe();
     };
-  }, [workspace, usersById]);
+  }, [workspace, usersById, hasActiveSession]);
 
   async function refreshWorkspaceFromSession(preferredChatId?: string) {
     if (!supabase) {
@@ -1266,6 +1450,7 @@ function App() {
         ? preferredChatId
         : nextWorkspace.chats[0]?.id ?? null
     );
+    setHasActiveSession(true);
     setConnectionLabel("live");
     setError(null);
   }
@@ -1286,7 +1471,8 @@ function App() {
         provider: telegramProviderId as never,
         options: {
           redirectTo,
-          scopes: "openid profile"
+          scopes: "openid profile",
+          skipBrowserRedirect: true
         }
       });
 
@@ -1295,7 +1481,7 @@ function App() {
       }
 
       if (data?.url) {
-        window.location.assign(data.url);
+        window.location.replace(data.url);
         return;
       }
 
@@ -1329,6 +1515,11 @@ function App() {
 
     if (workspace.mode !== "supabase" || !supabase) {
       setError("Поиск пользователей доступен после подключения к Supabase.");
+      return;
+    }
+
+    if (!hasActiveSession) {
+      setError("Вход через Telegram нужно обновить.");
       return;
     }
 
@@ -1498,7 +1689,7 @@ function App() {
     setError(null);
 
     try {
-      if (workspace.mode === "supabase" && supabase) {
+      if (workspace.mode === "supabase" && supabase && hasActiveSession) {
         const payload = {
           full_name: nextName,
           avatar_url: profileAvatarDraft ?? null
@@ -1545,6 +1736,7 @@ function App() {
     }
 
     saveDemoSessionUserId(null);
+    clearWorkspaceCache();
 
     setWorkspace(null);
     setSelectedChatId(null);
@@ -1552,6 +1744,7 @@ function App() {
     setSearchQuery("");
     setDirectoryResults([]);
     setNotice(null);
+    setHasActiveSession(false);
     setConnectionLabel("offline");
   }
 
@@ -1583,6 +1776,10 @@ function App() {
 
       if (!supabase) {
         throw new Error("Supabase не подключён.");
+      }
+
+      if (!hasActiveSession) {
+        throw new Error("Auth session missing");
       }
 
       const { data, error: insertError } = await supabase
@@ -1637,6 +1834,32 @@ function App() {
               {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
             </button>
           </div>
+
+          {rememberedUsers.length ? (
+            <div className="remembered-panel">
+              <div className="remembered-panel-head">
+                <span className="section-label">На этом устройстве</span>
+                <span className="remembered-hint">Последние профили</span>
+              </div>
+              <div className="remembered-list">
+                {rememberedUsers.map((user) => (
+                  <div key={user.id} className="remembered-card">
+                    {renderAvatar({
+                      label: user.name,
+                      accentColor: user.accentColor,
+                      imageUrl: user.avatarUrl,
+                      className: "remembered-avatar"
+                    })}
+                    <span className="remembered-copy">
+                      <strong>{user.name}</strong>
+                      <span>@{user.username}</span>
+                    </span>
+                    <small>{formatRememberedStamp(user.lastSeenAt)}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {notice ? <p className="notice-text">{notice}</p> : null}
           {error ? <p className={`error-text${errorVisible ? " is-visible" : ""}`}>{error}</p> : null}
@@ -1735,6 +1958,11 @@ function App() {
         </div>
 
         <div className="profile-drawer-footer">
+          {!hasActiveSession && workspace.mode === "supabase" ? (
+            <button type="button" className="profile-secondary-button" onClick={() => void handleTelegramLogin()}>
+              Обновить вход
+            </button>
+          ) : null}
           <button type="button" className="profile-primary-button" onClick={() => void handleSaveProfile()} disabled={isProfileSaving}>
             {isProfileSaving ? "Сохранение..." : "Сохранить"}
           </button>
