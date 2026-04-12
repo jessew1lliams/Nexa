@@ -963,10 +963,28 @@ async function ensureDefaultMemberships(userId: string) {
   }
 }
 
-function buildSupabaseFallbackWorkspace(profile: AppUser, syncLabel: string) {
+async function fetchSupabaseDirectoryUsers(currentUserId: string) {
+  if (!supabase) {
+    return [] as AppUser[];
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .neq("id", currentUserId)
+    .order("full_name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ((data as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+}
+
+function buildSupabaseFallbackWorkspace(profile: AppUser, syncLabel: string, directoryUsers: AppUser[] = readCachedDirectoryUsers()) {
   return buildWorkspace({
     currentUserId: profile.id,
-    users: [profile],
+    users: mergeUsersById([profile], directoryUsers.filter((entry) => entry.id !== profile.id)),
     chatRecords: [],
     memberIdsByChat: {},
     messagesByChat: {},
@@ -1412,7 +1430,7 @@ function App() {
 
     const timer = window.setTimeout(async () => {
       try {
-        const sanitized = searchValue.replace(/[%_]/g, "").trim();
+        const sanitized = searchValue.replace(/[%_]/g, "").replace(/^@+/, "").trim();
         if (!sanitized) {
           if (!ignore) {
             setDirectoryResults(directorySource.slice(0, 18));
@@ -1431,7 +1449,7 @@ function App() {
           .from("profiles")
           .select("*")
           .neq("id", workspace.currentUser.id)
-          .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern}`)
+          .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
           .limit(48);
 
         if (ignore) {
@@ -1523,7 +1541,18 @@ function App() {
         setError(null);
       } catch (loadError) {
         if (!ignore) {
-          const fallbackWorkspace = buildSupabaseFallbackWorkspace(buildAuthFallbackProfile(session.user), "");
+          const fallbackProfile = buildAuthFallbackProfile(session.user);
+          let fallbackDirectory = readCachedDirectoryUsers();
+
+          try {
+            fallbackDirectory = await fetchSupabaseDirectoryUsers(session.user.id);
+            saveCachedDirectoryUsers(fallbackDirectory);
+            setDirectoryUsers(fallbackDirectory);
+          } catch {
+            setDirectoryUsers((current) => (current.length ? current : fallbackDirectory));
+          }
+
+          const fallbackWorkspace = buildSupabaseFallbackWorkspace(fallbackProfile, "", fallbackDirectory);
           setWorkspace((current) => current ?? fallbackWorkspace);
           setSelectedChatId((current) => current ?? fallbackWorkspace.chats[0]?.id ?? null);
           setHasActiveSession(true);
@@ -1838,6 +1867,15 @@ function App() {
 
     try {
       const directChatId = buildDirectChatId(workspace.currentUser.id, target.id);
+      setDirectoryUsers((current) => {
+        const nextUsers = mergeUsersById(current, [target]);
+        saveCachedDirectoryUsers(nextUsers);
+        return nextUsers;
+      });
+      setWorkspace((current) => (current ? upsertLocalDirectChat(current, target, directChatId) : current));
+      setSelectedChatId(directChatId);
+      setSearchQuery("");
+      setDirectoryResults([]);
 
       const { error: createChatError } = await supabase.from("chats").upsert(
         {
@@ -1868,16 +1906,6 @@ function App() {
       if (membershipInsertError) {
         throw new Error(membershipInsertError.message);
       }
-
-      setDirectoryUsers((current) => {
-        const nextUsers = mergeUsersById(current, [target]);
-        saveCachedDirectoryUsers(nextUsers);
-        return nextUsers;
-      });
-      setWorkspace((current) => (current ? upsertLocalDirectChat(current, target, directChatId) : current));
-      setSelectedChatId(directChatId);
-      setSearchQuery("");
-      setDirectoryResults([]);
 
       try {
         await refreshWorkspaceFromSession(directChatId);
