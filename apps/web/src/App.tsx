@@ -1848,7 +1848,7 @@ function App() {
           accent_color: target.accentColor,
           is_default: false
         },
-        { onConflict: "id" }
+        { onConflict: "id", ignoreDuplicates: true }
       );
 
       if (createChatError) {

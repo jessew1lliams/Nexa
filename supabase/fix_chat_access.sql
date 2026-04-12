@@ -8,8 +8,8 @@ alter table public.messages enable row level security;
 
 grant usage on schema public to authenticated;
 grant select, insert, update on public.profiles to authenticated;
-grant select, insert on public.chats to authenticated;
-grant select, insert on public.chat_members to authenticated;
+grant select, insert, update on public.chats to authenticated;
+grant select, insert, update on public.chat_members to authenticated;
 grant select, insert on public.messages to authenticated;
 
 drop policy if exists "profiles_select_authenticated" on public.profiles;
@@ -51,6 +51,13 @@ create policy "chats_insert_authenticated"
   to authenticated
   with check (true);
 
+drop policy if exists "chats_update_authenticated" on public.chats;
+create policy "chats_update_authenticated"
+  on public.chats for update
+  to authenticated
+  using (true)
+  with check (true);
+
 drop policy if exists "chat_members_select_member" on public.chat_members;
 drop policy if exists "chat_members_select_authenticated" on public.chat_members;
 create policy "chat_members_select_authenticated"
@@ -63,6 +70,13 @@ drop policy if exists "chat_members_insert_authenticated" on public.chat_members
 create policy "chat_members_insert_authenticated"
   on public.chat_members for insert
   to authenticated
+  with check (true);
+
+drop policy if exists "chat_members_update_authenticated" on public.chat_members;
+create policy "chat_members_update_authenticated"
+  on public.chat_members for update
+  to authenticated
+  using (true)
   with check (true);
 
 drop policy if exists "messages_select_member" on public.messages;
