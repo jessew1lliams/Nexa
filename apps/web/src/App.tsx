@@ -21,6 +21,7 @@ const demoMessagesKey = "nexa-demo-messages-v1";
 const profileOverridesKey = "nexa-profile-overrides-v1";
 const rememberedUsersKey = "nexa-remembered-users-v1";
 const workspaceCacheKey = "nexa-workspace-cache-v1";
+const directoryCacheKey = "nexa-directory-users-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
@@ -223,6 +224,33 @@ function pickAccentColor(seed: string) {
   const index = Math.abs(seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % accentPalette.length;
   return accentPalette[index];
 }
+
+function buildStableUuid(seed: string) {
+  let a = 0x811c9dc5;
+  let b = 0x9e3779b1;
+  let c = 0x85ebca6b;
+  let d = 0xc2b2ae35;
+
+  for (const char of seed) {
+    const code = char.charCodeAt(0);
+    a = Math.imul(a ^ code, 0x01000193) >>> 0;
+    b = Math.imul(b ^ code, 0x27d4eb2d) >>> 0;
+    c = Math.imul(c ^ code, 0x165667b1) >>> 0;
+    d = Math.imul(d ^ code, 0x85ebca77) >>> 0;
+  }
+
+  const hex = [a, b, c, d]
+    .map((value) => value.toString(16).padStart(8, "0"))
+    .join("")
+    .slice(0, 32);
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function buildDirectChatId(leftUserId: string, rightUserId: string) {
+  return buildStableUuid([leftUserId, rightUserId].sort().join(":"));
+}
+
 function pickFirstText(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) {
@@ -242,15 +270,19 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("auth session missing")) {
+    return "\u0412\u0445\u043e\u0434 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043d. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437.";
+  }
+
+  if (normalized.includes("auth session missing")) {
     return "Вход больше не подтверждён. Авторизацию можно запустить ещё раз.";
   }
 
   if (normalized.includes("issued in the future") || normalized.includes("clock for skew") || normalized.includes("device clock")) {
-    return "Р’СЂРµРјСЏ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РѕС‚ СЃРµСЂРІРµСЂРЅРѕРіРѕ. РќСѓР¶РЅРѕ РїСЂРѕРІРµСЂРёС‚СЊ РґР°С‚Сѓ Рё РІСЂРµРјСЏ.";
+    return "\u0412\u0440\u0435\u043c\u044f \u043d\u0430 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435 \u043e\u0442\u043b\u0438\u0447\u0430\u0435\u0442\u0441\u044f \u043e\u0442 \u0441\u0435\u0440\u0432\u0435\u0440\u043d\u043e\u0433\u043e. \u041d\u0443\u0436\u043d\u043e \u043f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0434\u0430\u0442\u0443 \u0438 \u0432\u0440\u0435\u043c\u044f.";
   }
 
   if (normalized.includes("update your telegram app") || normalized.includes("confirm the login request from the website")) {
-    return "РўРµРєСѓС‰Р°СЏ РІРµСЂСЃРёСЏ Telegram РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ СЌС‚РѕС‚ С‚РёРї РІС…РѕРґР°.";
+    return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u043d\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043f \u0432\u0445\u043e\u0434\u0430.";
   }
 
   if (
@@ -259,11 +291,11 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     normalized.includes("could not find the table") ||
     normalized.includes("foreign key constraint")
   ) {
-    return "Р‘Р°Р·Р° Nexa РІ Supabase РµС‰С‘ РЅРµ РїРѕРґРіРѕС‚РѕРІР»РµРЅР°. РќСѓР¶РЅРѕ РІС‹РїРѕР»РЅРёС‚СЊ SQL-СЃС…РµРјСѓ РїСЂРѕРµРєС‚Р°.";
+    return "\u0411\u0430\u0437\u0430 Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0430. \u041d\u0443\u0436\u043d\u043e \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c SQL-\u0441\u0445\u0435\u043c\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
   }
 
   if (normalized.includes("row-level security")) {
-    return "Р”РѕСЃС‚СѓРї Рє С‚Р°Р±Р»РёС†Р°Рј Nexa РІ Supabase РµС‰С‘ РЅРµ РЅР°СЃС‚СЂРѕРµРЅ.";
+    return "\u0414\u043e\u0441\u0442\u0443\u043f \u043a \u0442\u0430\u0431\u043b\u0438\u0446\u0430\u043c Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d.";
   }
 
   if (
@@ -274,19 +306,23 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     normalized.includes("database error") ||
     normalized.includes("permission denied")
   ) {
-    return "РџСЂР°РІРёР»Р° РґРѕСЃС‚СѓРїР° РІ Supabase СЃРµР№С‡Р°СЃ РјРµС€Р°СЋС‚ Р·Р°РіСЂСѓР·РєРµ С‡Р°С‚РѕРІ. РќСѓР¶РµРЅ SQL-РїР°С‚С‡ РїСЂРѕРµРєС‚Р°.";
+    return "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u0432 Supabase \u0441\u0435\u0439\u0447\u0430\u0441 \u043c\u0435\u0448\u0430\u044e\u0442 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0435 \u0447\u0430\u0442\u043e\u0432. \u041d\u0443\u0436\u0435\u043d SQL-\u043f\u0430\u0442\u0447 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
   }
 
   if (normalized.includes("failed to fetch") || normalized.includes("network")) {
-    return "РЎРІСЏР·СЊ СЃ СЃРµСЂРІРµСЂРѕРј СЃРµР№С‡Р°СЃ РЅРµРґРѕСЃС‚СѓРїРЅР°. РђРІС‚РѕСЂРёР·Р°С†РёСЋ РјРѕР¶РЅРѕ РїРѕРІС‚РѕСЂРёС‚СЊ РїРѕР·Р¶Рµ.";
+    return "\u0421\u0432\u044f\u0437\u044c \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u043f\u043e\u0437\u0436\u0435.";
   }
 
   if (normalized.includes("invalid login credentials")) {
-    return "РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ РёР»Рё РґР°РЅРЅС‹Рµ РІРІРµРґРµРЅС‹ РЅРµРІРµСЂРЅРѕ.";
+    return "\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0434\u0430\u043d\u043d\u044b\u0435 \u0432\u0432\u0435\u0434\u0435\u043d\u044b \u043d\u0435\u0432\u0435\u0440\u043d\u043e.";
   }
 
   if (normalized.includes("email not confirmed")) {
-    return "РџРѕС‡С‚Р° РµС‰С‘ РЅРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅР°.";
+    return "\u041f\u043e\u0447\u0442\u0430 \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0430.";
+  }
+
+  if (looksLikeMojibake(rawMessage)) {
+    return fallback;
   }
 
   if (/^[\x00-\x7F]+$/.test(rawMessage)) {
@@ -294,6 +330,10 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   return rawMessage;
+}
+
+function looksLikeMojibake(value: string) {
+  return ["Рџ", "РЎ", "Рќ", "СЃ", "С‚", "Р°", "Рё", "Рµ", "вЂ", "в„–"].filter((fragment) => value.includes(fragment)).length >= 2;
 }
 
 function getErrorMessage(error: unknown) {
@@ -579,11 +619,21 @@ function buildWorkspace(args: {
     args.chatRecords.map((chat) => {
       const messages = args.messagesByChat[chat.id] ?? [];
       const lastMessage = messages.at(-1) ?? null;
+      const memberIds = args.memberIdsByChat[chat.id] ?? [];
+      const peerUser =
+        chat.kind === "direct"
+          ? args.users.find((user) => memberIds.includes(user.id) && user.id !== currentUser.id) ?? null
+          : null;
 
       return {
         ...chat,
-        memberIds: args.memberIdsByChat[chat.id] ?? [],
-        lastMessagePreview: lastMessage ? buildPreview(args.users, currentUser.id, lastMessage) : "РџРѕРєР° Р±РµР· СЃРѕРѕР±С‰РµРЅРёР№",
+        title: peerUser?.name ?? chat.title,
+        description: chat.kind === "direct" ? (peerUser ? `@${peerUser.username}` : chat.description) : chat.description,
+        accentColor: peerUser?.accentColor ?? chat.accentColor,
+        memberIds,
+        lastMessagePreview: lastMessage
+          ? buildPreview(args.users, currentUser.id, lastMessage)
+          : "\u041f\u043e\u043a\u0430 \u0431\u0435\u0437 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439",
         lastMessageAt: lastMessage?.sentAt ?? null,
         unreadCount: 0
       } satisfies ChatSummary;
@@ -717,6 +767,28 @@ function rememberDeviceUser(user: AppUser) {
   const merged = [nextEntry, ...readRememberedUsers().filter((entry) => entry.id !== user.id)].slice(0, 6);
   window.localStorage.setItem(rememberedUsersKey, JSON.stringify(merged));
   return merged;
+}
+
+function readCachedDirectoryUsers() {
+  if (typeof window === "undefined") {
+    return [] as AppUser[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(directoryCacheKey);
+    const parsed = raw ? (JSON.parse(raw) as AppUser[]) : [];
+    return parsed.filter((entry) => entry?.id && entry?.name && entry?.username).slice(0, 120);
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedDirectoryUsers(users: AppUser[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(directoryCacheKey, JSON.stringify(users.slice(0, 120)));
 }
 
 function buildCachedWorkspace(workspace: WorkspaceData): WorkspaceData {
@@ -1064,7 +1136,7 @@ function App() {
     loadWorkspaceCache()?.workspace ? "reconnecting" : "offline"
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [directoryUsers, setDirectoryUsers] = useState<AppUser[]>([]);
+  const [directoryUsers, setDirectoryUsers] = useState<AppUser[]>(() => readCachedDirectoryUsers());
   const [directoryResults, setDirectoryResults] = useState<AppUser[]>([]);
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
@@ -1198,8 +1270,13 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!workspace || workspace.mode !== "supabase" || !supabase || !hasActiveSession) {
-      setDirectoryUsers([]);
+    if (!workspace || workspace.mode !== "supabase") {
+      setDirectoryUsers(readCachedDirectoryUsers());
+      return;
+    }
+
+    if (!supabase || !hasActiveSession) {
+      setDirectoryUsers((current) => (current.length ? current : readCachedDirectoryUsers()));
       return;
     }
 
@@ -1224,10 +1301,11 @@ function App() {
 
         const nextUsers = ((data as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
         setDirectoryUsers(nextUsers);
+        saveCachedDirectoryUsers(nextUsers);
         setWorkspace((current) => (current ? mergeWorkspaceUsers(current, nextUsers) : current));
       } catch {
         if (!ignore) {
-          setDirectoryUsers((current) => current);
+          setDirectoryUsers((current) => (current.length ? current : readCachedDirectoryUsers()));
         }
       }
     }
@@ -1235,7 +1313,7 @@ function App() {
     void refreshDirectory();
     const interval = window.setInterval(() => {
       void refreshDirectory();
-    }, 20000);
+    }, 12000);
 
     const channel = client
       .channel(`nexa-profiles-${workspace.currentUser.id}`)
@@ -1349,26 +1427,34 @@ function App() {
           return;
         }
 
-        const [nameResult, usernameResult, bioResult] = await Promise.all([
-          client.from("profiles").select("*").ilike("full_name", pattern).neq("id", workspace.currentUser.id).limit(24),
-          client.from("profiles").select("*").ilike("username", pattern).neq("id", workspace.currentUser.id).limit(24),
-          client.from("profiles").select("*").ilike("bio", pattern).neq("id", workspace.currentUser.id).limit(24)
-        ]);
+        const { data, error: searchError } = await client
+          .from("profiles")
+          .select("*")
+          .neq("id", workspace.currentUser.id)
+          .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern}`)
+          .limit(48);
 
         if (ignore) {
           return;
         }
 
-        const merged = new Map(localDirectoryMatches.map((user) => [user.id, user]));
-        for (const row of [
-          ...(((nameResult.data as SupabaseProfileRow[] | null) ?? [])),
-          ...(((usernameResult.data as SupabaseProfileRow[] | null) ?? [])),
-          ...(((bioResult.data as SupabaseProfileRow[] | null) ?? []))
-        ]) {
-          merged.set(row.id, mapProfileRow(row));
+        if (searchError) {
+          throw searchError;
         }
 
-        setDirectoryResults(Array.from(merged.values()).slice(0, 24));
+        const merged = new Map(localDirectoryMatches.map((user) => [user.id, user]));
+        for (const row of ((data as SupabaseProfileRow[] | null) ?? [])) {
+          const user = mapProfileRow(row);
+          merged.set(user.id, user);
+        }
+
+        const mergedUsers = Array.from(merged.values()).slice(0, 48);
+        setDirectoryResults(mergedUsers);
+        setDirectoryUsers((current) => {
+          const nextUsers = mergeUsersById(current, mergedUsers);
+          saveCachedDirectoryUsers(nextUsers);
+          return nextUsers;
+        });
       } catch {
         if (!ignore) {
           setDirectoryResults(localDirectoryMatches);
@@ -1751,78 +1837,44 @@ function App() {
     setError(null);
 
     try {
-      const { data: memberRows, error: memberError } = await supabase
+      const directChatId = buildDirectChatId(workspace.currentUser.id, target.id);
+
+      const { error: createChatError } = await supabase.from("chats").upsert(
+        {
+          id: directChatId,
+          title: "Диалог",
+          kind: "direct",
+          description: "",
+          accent_color: target.accentColor,
+          is_default: false
+        },
+        { onConflict: "id" }
+      );
+
+      if (createChatError) {
+        throw new Error(createChatError.message);
+      }
+
+      const { error: membershipInsertError } = await supabase
         .from("chat_members")
-        .select("chat_id,user_id")
-        .in("user_id", [workspace.currentUser.id, target.id]);
+        .upsert(
+          [
+            { chat_id: directChatId, user_id: workspace.currentUser.id },
+            { chat_id: directChatId, user_id: target.id }
+          ],
+          { onConflict: "chat_id,user_id", ignoreDuplicates: true }
+        );
 
-      if (memberError) {
-        throw new Error(memberError.message);
+      if (membershipInsertError) {
+        throw new Error(membershipInsertError.message);
       }
 
-      const membershipsByChat = new Map<string, Set<string>>();
-      for (const row of ((memberRows as SupabaseChatMemberRow[] | null) ?? [])) {
-        const chatId = String(row.chat_id);
-        const members = membershipsByChat.get(chatId) ?? new Set<string>();
-        members.add(String(row.user_id));
-        membershipsByChat.set(chatId, members);
-      }
-
-      let directChatId: string | null = null;
-      const sharedChatIds = Array.from(membershipsByChat.entries())
-        .filter(([, members]) => members.has(workspace.currentUser.id) && members.has(target.id))
-        .map(([chatId]) => chatId);
-
-      if (sharedChatIds.length) {
-        const { data: chatRows, error: chatLookupError } = await supabase
-          .from("chats")
-          .select("*")
-          .in("id", sharedChatIds)
-          .eq("kind", "direct")
-          .limit(1);
-
-        if (chatLookupError) {
-          throw new Error(chatLookupError.message);
-        }
-
-        directChatId = (chatRows as SupabaseChatRow[] | null)?.[0]?.id ?? null;
-      }
-
-      if (!directChatId) {
-        const { data: chatRow, error: createChatError } = await supabase
-          .from("chats")
-          .insert({
-            title: target.name,
-            kind: "direct",
-            description: `@${target.username}`,
-            accent_color: target.accentColor,
-            is_default: false
-          })
-          .select()
-          .single();
-
-        if (createChatError) {
-          throw new Error(createChatError.message);
-        }
-
-        directChatId = String((chatRow as SupabaseChatRow).id);
-
-        const { error: membershipInsertError } = await supabase
-          .from("chat_members")
-          .upsert(
-            [
-              { chat_id: directChatId, user_id: workspace.currentUser.id },
-              { chat_id: directChatId, user_id: target.id }
-            ],
-            { onConflict: "chat_id,user_id", ignoreDuplicates: true }
-          );
-
-        if (membershipInsertError) {
-          throw new Error(membershipInsertError.message);
-        }
-      }
-
-      setWorkspace((current) => (current ? upsertLocalDirectChat(current, target, directChatId!) : current));
+      setDirectoryUsers((current) => {
+        const nextUsers = mergeUsersById(current, [target]);
+        saveCachedDirectoryUsers(nextUsers);
+        return nextUsers;
+      });
+      setWorkspace((current) => (current ? upsertLocalDirectChat(current, target, directChatId) : current));
       setSelectedChatId(directChatId);
       setSearchQuery("");
       setDirectoryResults([]);

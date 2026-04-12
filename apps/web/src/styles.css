@@ -1202,7 +1202,7 @@ button {
 }
 
 .nav-brand:hover {
-  background: rgba(39, 149, 255, 0.08);
+  background: transparent;
   color: inherit;
 }
 
