@@ -379,7 +379,9 @@ function looksLikeSupabaseAccessIssue(error: unknown) {
     "database error",
     "permission denied",
     "schema cache",
-    "relation"
+    "relation",
+    "foreign key constraint",
+    "violates foreign key constraint"
   ].some((pattern) => normalized.includes(pattern));
 }
 
@@ -601,8 +603,13 @@ async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: A
     throw new Error(chatError.message);
   }
 
+  const memberIds =
+    chat.kind === "direct"
+      ? Array.from(new Set([currentUser.id, ...chat.memberIds]))
+      : [currentUser.id];
+
   const { error: membershipError } = await supabase.from("chat_members").upsert(
-    [{ chat_id: chat.id, user_id: currentUser.id }],
+    memberIds.map((userId) => ({ chat_id: chat.id, user_id: userId })),
     { onConflict: "chat_id,user_id", ignoreDuplicates: true }
   );
 
