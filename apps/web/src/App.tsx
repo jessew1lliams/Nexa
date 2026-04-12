@@ -1386,6 +1386,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [errorVisible, setErrorVisible] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingOAuthUrl, setPendingOAuthUrl] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
   const [, setLoadingStatus] = useState("Подключение к Nexa.");
@@ -1862,6 +1863,7 @@ function App() {
         );
         setHasActiveSession(true);
         setConnectionLabel("live");
+        setPendingOAuthUrl(null);
         setNotice(null);
         setError(null);
       } catch (loadError) {
@@ -1913,6 +1915,7 @@ function App() {
         if (!data.session?.user) {
           callbackResolved = true;
           setHasActiveSession(false);
+          setPendingOAuthUrl(null);
           setIsLoading(false);
           if (isAuthCallback) {
             clearAuthCallbackUrl();
@@ -1934,6 +1937,7 @@ function App() {
 
         callbackResolved = true;
         setHasActiveSession(false);
+        setPendingOAuthUrl(null);
         if (workspaceRef.current?.mode === "supabase") {
           setConnectionLabel("offline");
         }
@@ -1949,6 +1953,7 @@ function App() {
       ? window.setTimeout(() => {
           if (!ignore && !callbackResolved) {
             clearAuthCallbackUrl();
+            setPendingOAuthUrl(null);
             setIsLoading(false);
             setError("Не удалось завершить вход.");
           }
@@ -1970,6 +1975,7 @@ function App() {
       if (!session?.user) {
         setHasActiveSession(false);
         setConnectionLabel("offline");
+        setPendingOAuthUrl(null);
         setIsLoading(false);
 
         if (!workspaceRef.current || workspaceRef.current.mode !== "supabase") {
@@ -2128,26 +2134,39 @@ function App() {
     }
 
     setIsBusy(true);
-    setIsLoading(true);
-    setLoadingStatus(`Открытие входа через ${label}.`);
+    setPendingOAuthUrl(null);
+    setNotice(`Открываю вход через ${label}.`);
     setError(null);
     try {
       const redirectTo = `${window.location.origin}${window.location.pathname}`;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: providerId as never,
         options: {
           redirectTo,
-          scopes: "openid profile"
+          scopes: "openid profile",
+          skipBrowserRedirect: true
         }
       });
 
       if (oauthError) {
         throw oauthError;
       }
+
+      if (!data?.url) {
+        throw new Error(`${label} redirect url missing`);
+      }
+
+      setPendingOAuthUrl(data.url);
+      window.location.assign(data.url);
+      window.setTimeout(() => {
+        setIsBusy(false);
+        setNotice(`Если вход через ${label} не открылся автоматически, можно продолжить вручную.`);
+      }, 2500);
+      return;
     } catch (oauthError) {
+      setPendingOAuthUrl(null);
+      setNotice(null);
       setError(formatUiErrorMessage(oauthError, `${label}-вход временно недоступен.`));
-      setIsLoading(false);
-    } finally {
       setIsBusy(false);
     }
   }
@@ -2488,6 +2507,11 @@ function App() {
             <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading}>
               {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
             </button>
+            {pendingOAuthUrl ? (
+              <a className="oauth-manual-link" href={pendingOAuthUrl}>
+                Открыть вход вручную
+              </a>
+            ) : null}
           </div>
 
           {rememberedUsers.length ? (
