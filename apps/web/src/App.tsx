@@ -24,7 +24,9 @@ const workspaceCacheKey = "nexa-workspace-cache-v1";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
+const brandLogoUrl = `${import.meta.env.BASE_URL}nexa-logo.png`;
 const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom:telegram").trim();
+const vkProviderId = (import.meta.env.VITE_VK_PROVIDER_ID ?? "custom:vk").trim();
 const defaultChatId = "11111111-1111-4111-8111-111111111111";
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
@@ -241,7 +243,7 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
   }
 
   if (normalized.includes("auth session missing")) {
-    return "Р’С…РѕРґ С‡РµСЂРµР· Telegram РЅРµ РїРѕРґС‚РІРµСЂРґРёР»СЃСЏ. РђРІС‚РѕСЂРёР·Р°С†РёСЋ РјРѕР¶РЅРѕ Р·Р°РїСѓСЃС‚РёС‚СЊ РµС‰С‘ СЂР°Р·.";
+    return "Вход больше не подтверждён. Авторизацию можно запустить ещё раз.";
   }
 
   if (normalized.includes("issued in the future") || normalized.includes("clock for skew") || normalized.includes("device clock")) {
@@ -352,9 +354,18 @@ function readAuthCallbackMessage() {
 
   return formatUiErrorMessage(
     new Error(rawMessage),
-    "\u0412\u0445\u043e\u0434 \u0447\u0435\u0440\u0435\u0437 Telegram \u043d\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0441\u044f. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437."
+    "\u0412\u0445\u043e\u0434 \u043d\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0441\u044f. \u0410\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044e \u043c\u043e\u0436\u043d\u043e \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0435\u0449\u0451 \u0440\u0430\u0437."
   );
 }
+
+function clearAuthCallbackUrl() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+}
+
 function hasAuthCallbackParams() {
   if (typeof window === "undefined") {
     return false;
@@ -374,18 +385,24 @@ function hasAuthCallbackParams() {
     hashParams.get("error_description")
   ].some(Boolean);
 }
-function getTelegramIdentityData(user: SupabaseAuthUser) {
-  const normalizedProviderId = telegramProviderId.replace(/^custom:/, "");
-  const identity = (user.identities ?? []).find(
-    (entry) => entry.provider === telegramProviderId || entry.provider === normalizedProviderId
-  );
+function getIdentityData(user: SupabaseAuthUser, providerId?: string) {
+  const identities = user.identities ?? [];
 
-  return (identity?.identity_data ?? {}) as Record<string, unknown>;
+  if (!providerId) {
+    return (identities[0]?.identity_data ?? {}) as Record<string, unknown>;
+  }
+
+  const normalizedProviderId = providerId.replace(/^custom:/, "");
+  const identity = identities.find((entry) => entry.provider === providerId || entry.provider === normalizedProviderId);
+
+  return (identity?.identity_data ?? identities[0]?.identity_data ?? {}) as Record<string, unknown>;
 }
 
 function getProfileDefaults(user: SupabaseAuthUser) {
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const identityData = getTelegramIdentityData(user);
+  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
+  const activeProvider = pickFirstText(appMetadata.provider);
+  const identityData = getIdentityData(user, activeProvider);
   const combinedName = [pickFirstText(identityData.first_name), pickFirstText(identityData.last_name)].filter(Boolean).join(" ");
   const fullName = pickFirstText(
     metadata.full_name,
@@ -400,14 +417,42 @@ function getProfileDefaults(user: SupabaseAuthUser) {
     pickFirstText(
       metadata.username,
       metadata.preferred_username,
+      metadata.screen_name,
+      metadata.domain,
       identityData.preferred_username,
       identityData.username,
+      identityData.screen_name,
+      identityData.domain,
+      identityData.nickname,
       user.email?.split("@")[0],
       `user_${user.id.slice(0, 8)}`
     )
   ) || `user_${user.id.slice(0, 8)}`;
 
   return { fullName, username };
+}
+
+function getProfileAvatarDefault(user: SupabaseAuthUser) {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
+  const activeProvider = pickFirstText(appMetadata.provider);
+  const identityData = getIdentityData(user, activeProvider);
+
+  return (
+    pickFirstText(
+      metadata.avatar_url,
+      metadata.picture,
+      metadata.photo,
+      metadata.photo_200,
+      metadata.photo_100,
+      identityData.avatar_url,
+      identityData.picture,
+      identityData.photo,
+      identityData.photo_200,
+      identityData.photo_100,
+      identityData.photo_max_orig
+    ) || undefined
+  );
 }
 
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
@@ -740,6 +785,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
 
   const { fullName, username } = getProfileDefaults(user);
   const storedOverride = getStoredProfileOverride(user.id);
+  const defaultAvatarUrl = getProfileAvatarDefault(user);
   const basePayload = {
     id: user.id,
     email: user.email ?? null,
@@ -755,7 +801,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     .upsert(
       {
         ...basePayload,
-        avatar_url: storedOverride.avatarUrl ?? null
+        avatar_url: storedOverride.avatarUrl ?? defaultAvatarUrl ?? null
       },
       { onConflict: "id" }
     )
@@ -1104,7 +1150,7 @@ function App() {
     }
 
     setError(callbackMessage);
-    window.history.replaceState({}, document.title, `${window.location.origin}${window.location.pathname}`);
+    clearAuthCallbackUrl();
   }, []);
 
   useEffect(() => {
@@ -1220,7 +1266,7 @@ function App() {
     if (isAuthCallback) {
       setIsLoading(true);
       setError(null);
-      setLoadingStatus("Завершение входа через Telegram.");
+      setLoadingStatus("Завершение входа.");
     }
 
     async function hydrateWorkspace(
@@ -1267,6 +1313,9 @@ function App() {
       } finally {
         if (!ignore) {
           callbackResolved = true;
+          if (isAuthCallback) {
+            clearAuthCallbackUrl();
+          }
           setIsLoading(false);
         }
       }
@@ -1274,7 +1323,11 @@ function App() {
 
     async function bootstrapSession() {
       try {
-        const { data, error: sessionError } = await client.auth.getSession();
+        const { data, error: sessionError } = await withTimeout(
+          client.auth.getSession(),
+          isAuthCallback ? 16000 : 7000,
+          isAuthCallback ? "Не удалось завершить вход." : "Не удалось быстро восстановить вход."
+        );
         if (ignore) {
           return;
         }
@@ -1284,8 +1337,13 @@ function App() {
         }
 
         if (!data.session?.user) {
+          callbackResolved = true;
           setHasActiveSession(false);
           setIsLoading(false);
+          if (isAuthCallback) {
+            clearAuthCallbackUrl();
+            setError("Не удалось завершить вход.");
+          }
           return;
         }
 
@@ -1300,12 +1358,14 @@ function App() {
           return;
         }
 
+        callbackResolved = true;
         setHasActiveSession(false);
         if (workspaceRef.current?.mode === "supabase") {
           setConnectionLabel("offline");
         }
         setIsLoading(false);
         if (isAuthCallback) {
+          clearAuthCallbackUrl();
           setError(formatUiErrorMessage(sessionError, "Не удалось завершить вход."));
         }
       }
@@ -1314,6 +1374,7 @@ function App() {
     const callbackTimer = isAuthCallback
       ? window.setTimeout(() => {
           if (!ignore && !callbackResolved) {
+            clearAuthCallbackUrl();
             setIsLoading(false);
             setError("Не удалось завершить вход.");
           }
@@ -1429,7 +1490,11 @@ function App() {
       throw new Error("Служба Supabase ещё не подключена.");
     }
 
-    const { data: authData, error: authError } = await supabase.auth.getSession();
+    const { data: authData, error: authError } = await withTimeout(
+      supabase.auth.getSession(),
+      8000,
+      "Не удалось быстро восстановить вход."
+    );
     if (authError) {
       throw new Error(authError.message);
     }
@@ -1455,7 +1520,7 @@ function App() {
     setError(null);
   }
 
-  async function handleTelegramLogin() {
+  async function handleProviderLogin(providerId: string, label: string) {
     if (!supabase) {
       setError("Сайт ещё не подключён к Supabase.");
       return;
@@ -1463,35 +1528,35 @@ function App() {
 
     setIsBusy(true);
     setIsLoading(true);
-    setLoadingStatus("Открытие входа через Telegram.");
+    setLoadingStatus(`Открытие входа через ${label}.`);
     setError(null);
     try {
       const redirectTo = `${window.location.origin}${window.location.pathname}`;
-      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: telegramProviderId as never,
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: providerId as never,
         options: {
           redirectTo,
-          scopes: "openid profile",
-          skipBrowserRedirect: true
+          scopes: "openid profile"
         }
       });
 
       if (oauthError) {
         throw oauthError;
       }
-
-      if (data?.url) {
-        window.location.replace(data.url);
-        return;
-      }
-
-      setError("Не удалось открыть Telegram-вход.");
     } catch (oauthError) {
-      setError(formatUiErrorMessage(oauthError, "Telegram-вход временно недоступен."));
+      setError(formatUiErrorMessage(oauthError, `${label}-вход временно недоступен.`));
       setIsLoading(false);
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function handleTelegramLogin() {
+    await handleProviderLogin(telegramProviderId, "Telegram");
+  }
+
+  async function handleVkLogin() {
+    await handleProviderLogin(vkProviderId, "VK");
   }
 
   async function handleOpenProfileChat(target: AppUser) {
@@ -1519,7 +1584,7 @@ function App() {
     }
 
     if (!hasActiveSession) {
-      setError("Вход через Telegram нужно обновить.");
+      setError("Вход нужно обновить.");
       return;
     }
 
@@ -1826,12 +1891,15 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Вход в Nexa выполняется через Telegram.</p>
+            <p>Вход в Nexa выполняется через Telegram или VK.</p>
           </div>
 
           <div className="auth-form auth-single-flow">
             <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading}>
               {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
+            </button>
+            <button type="button" className="vk-button" onClick={handleVkLogin} disabled={isBusy || isLoading}>
+              {isBusy || isLoading ? "Подключение..." : "Войти через VK"}
             </button>
           </div>
 
@@ -1872,7 +1940,7 @@ function App() {
     <div className="workspace-shell">
       <aside className="workspace-nav">
         <button type="button" className="nav-icon-button nav-brand" aria-label="Nexa">
-          <span>N</span>
+          <img className="nav-brand-logo" src={brandLogoUrl} alt="Nexa" />
         </button>
 
         <div className="workspace-nav-group">
@@ -1959,9 +2027,14 @@ function App() {
 
         <div className="profile-drawer-footer">
           {!hasActiveSession && workspace.mode === "supabase" ? (
-            <button type="button" className="profile-secondary-button" onClick={() => void handleTelegramLogin()}>
-              Обновить вход
-            </button>
+            <>
+              <button type="button" className="profile-secondary-button" onClick={() => void handleTelegramLogin()}>
+                Telegram
+              </button>
+              <button type="button" className="profile-secondary-button" onClick={() => void handleVkLogin()}>
+                VK
+              </button>
+            </>
           ) : null}
           <button type="button" className="profile-primary-button" onClick={() => void handleSaveProfile()} disabled={isProfileSaving}>
             {isProfileSaving ? "Сохранение..." : "Сохранить"}

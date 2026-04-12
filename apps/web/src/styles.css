@@ -1058,11 +1058,33 @@ button {
   box-shadow: 0 18px 30px rgba(21, 134, 209, 0.24);
 }
 
+.vk-button {
+  width: 100%;
+  border: 0;
+  border-radius: 20px;
+  min-height: 54px;
+  padding: 0 22px;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #1379f5, #0459c9);
+  box-shadow: 0 18px 30px rgba(4, 89, 201, 0.24);
+}
+
 .telegram-button:hover {
   transform: translateY(-1px);
 }
 
+.vk-button:hover {
+  transform: translateY(-1px);
+}
+
 .telegram-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.vk-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
@@ -1204,6 +1226,14 @@ button {
 .nav-brand:hover {
   background: linear-gradient(135deg, #2795ff, #0f6fd1);
   color: white;
+}
+
+.nav-brand-logo {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 10px 14px rgba(21, 71, 125, 0.14));
 }
 
 .nav-profile-avatar.avatar {
