@@ -305,13 +305,12 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u043d\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043f \u0432\u0445\u043e\u0434\u0430.";
   }
 
-  if (
-    (normalized.includes("relation") && normalized.includes("does not exist")) ||
-    normalized.includes("schema cache") ||
-    normalized.includes("could not find the table") ||
-    normalized.includes("foreign key constraint")
-  ) {
+  if ((normalized.includes("relation") && normalized.includes("does not exist")) || normalized.includes("could not find the table")) {
     return "\u0411\u0430\u0437\u0430 Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0430. \u041d\u0443\u0436\u043d\u043e \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c SQL-\u0441\u0445\u0435\u043c\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
+  }
+
+  if (normalized.includes("schema cache") || normalized.includes("foreign key constraint")) {
+    return "Данные Nexa в Supabase ещё обновляются. Подключение можно повторить через несколько секунд.";
   }
 
   if (normalized.includes("row-level security")) {
@@ -716,6 +715,21 @@ function mapProfileRow(row: SupabaseProfileRow): AppUser {
   });
 }
 
+function mapPartialProfileRow(
+  row: Partial<SupabaseProfileRow> & Pick<SupabaseProfileRow, "id" | "full_name" | "username" | "accent_color">
+): AppUser {
+  return applyProfileOverride({
+    id: row.id,
+    email: row.email ?? undefined,
+    name: row.full_name,
+    username: row.username,
+    role: row.role ?? "student",
+    accentColor: row.accent_color,
+    bio: row.bio ?? "Участник Nexa.",
+    avatarUrl: row.avatar_url ?? undefined
+  });
+}
+
 function mapChatRow(row: SupabaseChatRow): ChatRecord {
   return {
     id: row.id,
@@ -1000,7 +1014,20 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     throw new Error(error.message);
   }
 
-  return mapProfileRow(data as SupabaseProfileRow);
+  if (data) {
+    return mapProfileRow(data as SupabaseProfileRow);
+  }
+
+  return applyProfileOverride({
+    id: user.id,
+    email: user.email ?? undefined,
+    name: storedOverride.name?.trim() || fullName,
+    username,
+    role: "student",
+    accentColor: pickAccentColor(user.id),
+    avatarUrl: storedOverride.avatarUrl ?? defaultAvatarUrl ?? undefined,
+    bio: "Участник Nexa."
+  });
 }
 
 async function ensureDefaultMemberships(userId: string) {
@@ -1044,17 +1071,30 @@ async function fetchSupabaseDirectoryUsers(currentUserId: string) {
     return [] as AppUser[];
   }
 
-  const { data, error } = await supabase
+  let data: Array<Partial<SupabaseProfileRow>> | null = null;
+  let error: { message: string } | null = null;
+
+  ({ data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
     .neq("id", currentUserId)
-    .order("full_name", { ascending: true });
+    .order("full_name", { ascending: true }));
+
+  if (error && error.message.toLowerCase().includes("avatar_url")) {
+    ({ data, error } = await supabase
+      .from("profiles")
+      .select("id,email,full_name,username,role,accent_color,bio")
+      .neq("id", currentUserId)
+      .order("full_name", { ascending: true }));
+  }
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+  return ((data ?? []) as Array<
+    Partial<SupabaseProfileRow> & Pick<SupabaseProfileRow, "id" | "full_name" | "username" | "accent_color">
+  >).map(mapPartialProfileRow);
 }
 
 function buildSupabaseFallbackWorkspace(profile: AppUser, syncLabel: string, directoryUsers: AppUser[] = readCachedDirectoryUsers()) {
@@ -1154,10 +1194,20 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
   }
 
   const memberIds = Array.from(new Set((memberRows ?? []).map((row) => String((row as SupabaseChatMemberRow).user_id))));
-  const { data: profileRows, error: profileError } = await supabase
+  let profileRows: Array<Partial<SupabaseProfileRow>> | null = null;
+  let profileError: { message: string } | null = null;
+
+  ({ data: profileRows, error: profileError } = await supabase
     .from("profiles")
-    .select("*")
-    .in("id", memberIds.length ? memberIds : [user.id]);
+    .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
+    .in("id", memberIds.length ? memberIds : [user.id]));
+
+  if (profileError && profileError.message.toLowerCase().includes("avatar_url")) {
+    ({ data: profileRows, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,email,full_name,username,role,accent_color,bio")
+      .in("id", memberIds.length ? memberIds : [user.id]));
+  }
 
   if (profileError) {
     if (looksLikeSupabaseAccessIssue(profileError)) {
@@ -1170,7 +1220,9 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     throw new Error(profileError.message);
   }
 
-  const users = ((profileRows as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+  const users = ((profileRows ?? []) as Array<
+    Partial<SupabaseProfileRow> & Pick<SupabaseProfileRow, "id" | "full_name" | "username" | "accent_color">
+  >).map(mapPartialProfileRow);
   if (!users.some((entry) => entry.id === profile.id)) {
     users.unshift(profile);
   }
@@ -1403,11 +1455,22 @@ function App() {
 
     async function refreshDirectory() {
       try {
-        const { data, error: profilesError } = await client
+        let data: Array<Partial<SupabaseProfileRow>> | null = null;
+        let profilesError: { message: string } | null = null;
+
+        ({ data, error: profilesError } = await client
           .from("profiles")
-          .select("*")
+          .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
           .neq("id", currentUserId)
-          .order("full_name", { ascending: true });
+          .order("full_name", { ascending: true }));
+
+        if (profilesError && profilesError.message.toLowerCase().includes("avatar_url")) {
+          ({ data, error: profilesError } = await client
+            .from("profiles")
+            .select("id,email,full_name,username,role,accent_color,bio")
+            .neq("id", currentUserId)
+            .order("full_name", { ascending: true }));
+        }
 
         if (ignore || profilesError) {
           if (profilesError) {
@@ -1416,7 +1479,9 @@ function App() {
           return;
         }
 
-        const nextUsers = ((data as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+        const nextUsers = ((data ?? []) as Array<
+          Partial<SupabaseProfileRow> & Pick<SupabaseProfileRow, "id" | "full_name" | "username" | "accent_color">
+        >).map(mapPartialProfileRow);
         setDirectoryUsers(nextUsers);
         saveCachedDirectoryUsers(nextUsers);
         setWorkspace((current) => (current ? mergeWorkspaceUsers(current, nextUsers) : current));
@@ -1593,12 +1658,24 @@ function App() {
           return;
         }
 
-        const { data, error: searchError } = await client
+        let data: Array<Partial<SupabaseProfileRow>> | null = null;
+        let searchError: { message: string } | null = null;
+
+        ({ data, error: searchError } = await client
           .from("profiles")
-          .select("*")
+          .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
           .neq("id", workspace.currentUser.id)
           .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
-          .limit(48);
+          .limit(48));
+
+        if (searchError && searchError.message.toLowerCase().includes("avatar_url")) {
+          ({ data, error: searchError } = await client
+            .from("profiles")
+            .select("id,email,full_name,username,role,accent_color,bio")
+            .neq("id", workspace.currentUser.id)
+            .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
+            .limit(48));
+        }
 
         if (ignore) {
           return;
@@ -1609,8 +1686,10 @@ function App() {
         }
 
         const merged = new Map(localDirectoryMatches.map((user) => [user.id, user]));
-        for (const row of ((data as SupabaseProfileRow[] | null) ?? [])) {
-          const user = mapProfileRow(row);
+        for (const row of ((data ?? []) as Array<
+          Partial<SupabaseProfileRow> & Pick<SupabaseProfileRow, "id" | "full_name" | "username" | "accent_color">
+        >)) {
+          const user = mapPartialProfileRow(row);
           merged.set(user.id, user);
         }
 
