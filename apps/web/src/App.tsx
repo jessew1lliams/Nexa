@@ -582,7 +582,7 @@ function upsertLocalDirectChat(current: WorkspaceData, target: AppUser, chatId: 
   });
 }
 
-async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: AppUser) {
+async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: AppUser, users: AppUser[]) {
   if (!supabase) {
     throw new Error("Supabase не подключён.");
   }
@@ -603,9 +603,10 @@ async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: A
     throw new Error(chatError.message);
   }
 
+  const peerUser = chat.kind === "direct" ? resolveDirectPeerUser(chat, currentUser.id, users) : null;
   const memberIds =
     chat.kind === "direct"
-      ? Array.from(new Set([currentUser.id, ...chat.memberIds]))
+      ? Array.from(new Set([currentUser.id, ...(peerUser ? [peerUser.id] : []), ...chat.memberIds]))
       : [currentUser.id];
 
   const { error: membershipError } = await supabase.from("chat_members").upsert(
@@ -616,6 +617,24 @@ async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: A
   if (membershipError) {
     throw new Error(membershipError.message);
   }
+}
+
+function resolveDirectPeerUser(chat: ChatSummary, currentUserId: string, users: AppUser[]) {
+  const memberPeerId = chat.memberIds.find((userId) => userId !== currentUserId);
+  if (memberPeerId) {
+    return users.find((user) => user.id === memberPeerId) ?? null;
+  }
+
+  const normalizedUsername = chat.description?.trim().replace(/^@/, "").toLowerCase();
+  if (normalizedUsername) {
+    const peerByUsername = users.find((user) => user.id !== currentUserId && user.username.toLowerCase() === normalizedUsername);
+    if (peerByUsername) {
+      return peerByUsername;
+    }
+  }
+
+  const normalizedTitle = chat.title.trim().toLowerCase();
+  return users.find((user) => user.id !== currentUserId && user.name.trim().toLowerCase() === normalizedTitle) ?? null;
 }
 
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
@@ -2368,6 +2387,10 @@ function App() {
         throw new Error("Auth session missing");
       }
 
+      if (activeChat.kind === "direct") {
+        await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser, workspace.users);
+      }
+
       let data: SupabaseMessageRow | null = null;
       let insertError: { message: string } | null = null;
 
@@ -2378,7 +2401,7 @@ function App() {
         .single());
 
       if (insertError && looksLikeSupabaseAccessIssue(insertError)) {
-        await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser);
+        await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser, workspace.users);
 
         ({ data, error: insertError } = await supabase
           .from("messages")
