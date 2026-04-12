@@ -167,11 +167,96 @@ create trigger nexa_sync_auth_user
   for each row
   execute function public.nexa_sync_auth_user_trigger();
 
+create or replace function public.nexa_ensure_direct_chat(
+  p_chat_id uuid,
+  p_peer_user_id uuid,
+  p_accent_color text default '#2795FF'
+)
+returns public.chats
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_chat public.chats;
+begin
+  if v_user_id is null then
+    raise exception 'auth_required';
+  end if;
+
+  if not exists (select 1 from public.profiles where id = v_user_id) then
+    raise exception 'current_profile_missing';
+  end if;
+
+  if not exists (select 1 from public.profiles where id = p_peer_user_id) then
+    raise exception 'peer_profile_missing';
+  end if;
+
+  insert into public.chats (id, title, kind, description, accent_color, is_default)
+  values (p_chat_id, 'Диалог', 'direct', '', coalesce(nullif(p_accent_color, ''), '#2795FF'), false)
+  on conflict (id) do update
+    set accent_color = excluded.accent_color,
+        kind = 'direct',
+        is_default = false
+  returning * into v_chat;
+
+  insert into public.chat_members (chat_id, user_id)
+  values (p_chat_id, v_user_id), (p_chat_id, p_peer_user_id)
+  on conflict (chat_id, user_id) do nothing;
+
+  return v_chat;
+end
+$$;
+
+create or replace function public.nexa_send_direct_message(
+  p_chat_id uuid,
+  p_peer_user_id uuid,
+  p_content text,
+  p_accent_color text default '#2795FF'
+)
+returns table (
+  id uuid,
+  chat_id uuid,
+  author_id uuid,
+  content text,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+begin
+  if v_user_id is null then
+    raise exception 'auth_required';
+  end if;
+
+  if char_length(trim(coalesce(p_content, ''))) = 0 then
+    raise exception 'message_empty';
+  end if;
+
+  if char_length(p_content) > 1500 then
+    raise exception 'message_too_big';
+  end if;
+
+  perform public.nexa_ensure_direct_chat(p_chat_id, p_peer_user_id, p_accent_color);
+
+  return query
+    insert into public.messages (chat_id, author_id, content)
+    values (p_chat_id, v_user_id, p_content)
+    returning messages.id, messages.chat_id, messages.author_id, messages.content, messages.created_at;
+end
+$$;
+
 grant usage on schema public to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update on public.chats to authenticated;
 grant select, insert, update on public.chat_members to authenticated;
 grant select, insert on public.messages to authenticated;
+grant execute on function public.nexa_ensure_direct_chat(uuid, uuid, text) to authenticated;
+grant execute on function public.nexa_send_direct_message(uuid, uuid, text, text) to authenticated;
 
 do $$
 begin

@@ -309,6 +309,10 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     return "\u0411\u0430\u0437\u0430 Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0430. \u041d\u0443\u0436\u043d\u043e \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c SQL-\u0441\u0445\u0435\u043c\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
   }
 
+  if (normalized.includes("nexa_send_direct_message") || normalized.includes("nexa_ensure_direct_chat")) {
+    return "В Supabase ещё не применён новый SQL-патч для личных сообщений.";
+  }
+
   if (
     normalized.includes("foreign key constraint") ||
     (normalized.includes("chat_members") && normalized.includes("profiles")) ||
@@ -635,6 +639,35 @@ function resolveDirectPeerUser(chat: ChatSummary, currentUserId: string, users: 
 
   const normalizedTitle = chat.title.trim().toLowerCase();
   return users.find((user) => user.id !== currentUserId && user.name.trim().toLowerCase() === normalizedTitle) ?? null;
+}
+
+async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: AppUser, users: AppUser[], text: string) {
+  if (!supabase) {
+    throw new Error("Supabase не подключён.");
+  }
+
+  const peerUser = resolveDirectPeerUser(chat, currentUser.id, users);
+  if (!peerUser) {
+    throw new Error("Собеседник для личного чата пока не найден.");
+  }
+
+  const { data, error } = await supabase.rpc("nexa_send_direct_message", {
+    p_chat_id: chat.id,
+    p_peer_user_id: peerUser.id,
+    p_content: text,
+    p_accent_color: chat.accentColor
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    throw new Error("Сообщение не отправилось.");
+  }
+
+  return row as SupabaseMessageRow;
 }
 
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
@@ -2387,20 +2420,20 @@ function App() {
         throw new Error("Auth session missing");
       }
 
-      if (activeChat.kind === "direct") {
-        await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser, workspace.users);
-      }
-
       let data: SupabaseMessageRow | null = null;
       let insertError: { message: string } | null = null;
 
-      ({ data, error: insertError } = await supabase
-        .from("messages")
-        .insert({ chat_id: activeChat.id, author_id: workspace.currentUser.id, content: text })
-        .select()
-        .single());
+      if (activeChat.kind === "direct") {
+        data = await sendDirectMessageViaSupabaseRpc(activeChat, workspace.currentUser, workspace.users, text);
+      } else {
+        ({ data, error: insertError } = await supabase
+          .from("messages")
+          .insert({ chat_id: activeChat.id, author_id: workspace.currentUser.id, content: text })
+          .select()
+          .single());
+      }
 
-      if (insertError && looksLikeSupabaseAccessIssue(insertError)) {
+      if (activeChat.kind !== "direct" && insertError && looksLikeSupabaseAccessIssue(insertError)) {
         await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser, workspace.users);
 
         ({ data, error: insertError } = await supabase
