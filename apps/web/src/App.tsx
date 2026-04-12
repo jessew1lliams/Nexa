@@ -28,6 +28,14 @@ const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
 const brandLogoUrl = `${import.meta.env.BASE_URL}nexa-logo.png`;
 const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom:telegram").trim();
 const defaultChatId = "11111111-1111-4111-8111-111111111111";
+const defaultFallbackChat: ChatRecord = {
+  id: defaultChatId,
+  title: "Nexa / Общий чат",
+  kind: "group",
+  description: "Главный чат сообщества Nexa.",
+  accentColor: "#2795FF",
+  isDefault: true
+};
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
   live: "РѕРЅР»Р°Р№РЅ",
@@ -555,6 +563,7 @@ function upsertLocalDirectChat(current: WorkspaceData, target: AppUser, chatId: 
 
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
   const { fullName, username } = getProfileDefaults(user);
+  const avatarUrl = getProfileAvatarDefault(user);
 
   return applyProfileOverride({
     id: user.id,
@@ -563,6 +572,7 @@ function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
     username,
     role: "student",
     accentColor: pickAccentColor(user.id),
+    avatarUrl,
     bio: "Участник Nexa."
   });
 }
@@ -985,9 +995,13 @@ function buildSupabaseFallbackWorkspace(profile: AppUser, syncLabel: string, dir
   return buildWorkspace({
     currentUserId: profile.id,
     users: mergeUsersById([profile], directoryUsers.filter((entry) => entry.id !== profile.id)),
-    chatRecords: [],
-    memberIdsByChat: {},
-    messagesByChat: {},
+    chatRecords: [defaultFallbackChat],
+    memberIdsByChat: {
+      [defaultChatId]: [profile.id]
+    },
+    messagesByChat: {
+      [defaultChatId]: []
+    },
     mode: "supabase",
     syncLabel,
     universityName

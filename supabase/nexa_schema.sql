@@ -143,6 +143,12 @@ create policy "messages_select_member"
       where cm.chat_id = messages.chat_id
         and cm.user_id = auth.uid()
     )
+    or exists (
+      select 1
+      from public.chats c
+      where c.id = messages.chat_id
+        and c.is_default = true
+    )
   );
 
 drop policy if exists "messages_insert_member" on public.messages;
@@ -151,11 +157,19 @@ create policy "messages_insert_member"
   to authenticated
   with check (
     author_id = auth.uid()
-    and exists (
-      select 1
-      from public.chat_members cm
-      where cm.chat_id = messages.chat_id
-        and cm.user_id = auth.uid()
+    and (
+      exists (
+        select 1
+        from public.chat_members cm
+        where cm.chat_id = messages.chat_id
+          and cm.user_id = auth.uid()
+      )
+      or exists (
+        select 1
+        from public.chats c
+        where c.id = messages.chat_id
+          and c.is_default = true
+      )
     )
   );
 
