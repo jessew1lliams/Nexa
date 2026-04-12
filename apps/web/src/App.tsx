@@ -20,8 +20,8 @@ const demoSessionKey = "nexa-demo-session-v1";
 const demoMessagesKey = "nexa-demo-messages-v1";
 const profileOverridesKey = "nexa-profile-overrides-v1";
 const rememberedUsersKey = "nexa-remembered-users-v1";
-const workspaceCacheKey = "nexa-workspace-cache-v1";
-const directoryCacheKey = "nexa-directory-users-v1";
+const workspaceCacheKey = "nexa-workspace-cache-v2";
+const directoryCacheKey = "nexa-directory-users-v2";
 const maxMessageLength = 1500;
 const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
@@ -161,6 +161,18 @@ type CachedWorkspacePayload = {
   selectedChatId: string | null;
   cachedAt: string;
 };
+
+function mapRememberedUserToAppUser(user: RememberedDeviceUser): AppUser {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    role: user.role,
+    accentColor: user.accentColor,
+    avatarUrl: user.avatarUrl,
+    bio: "Профиль, который уже входил в Nexa на этом устройстве."
+  };
+}
 
 function getInitials(name: string) {
   return name
@@ -663,6 +675,34 @@ function buildWorkspace(args: {
   } satisfies WorkspaceData;
 }
 
+function ensureWorkspaceBaseline(workspace: WorkspaceData) {
+  const hasDefaultChat = workspace.chatRecords.some((chat) => chat.id === defaultChatId);
+  const defaultMemberIds = Array.from(new Set([workspace.currentUser.id, ...(workspace.memberIdsByChat[defaultChatId] ?? [])]));
+
+  if (hasDefaultChat && defaultMemberIds.length === (workspace.memberIdsByChat[defaultChatId] ?? []).length) {
+    return workspace;
+  }
+
+  const nextChatRecords = hasDefaultChat ? workspace.chatRecords : [defaultFallbackChat, ...workspace.chatRecords];
+
+  return buildWorkspace({
+    currentUserId: workspace.currentUser.id,
+    users: workspace.users,
+    chatRecords: nextChatRecords,
+    memberIdsByChat: {
+      ...workspace.memberIdsByChat,
+      [defaultChatId]: defaultMemberIds
+    },
+    messagesByChat: {
+      ...workspace.messagesByChat,
+      [defaultChatId]: workspace.messagesByChat[defaultChatId] ?? []
+    },
+    mode: workspace.mode,
+    syncLabel: workspace.syncLabel,
+    universityName: workspace.universityName
+  });
+}
+
 function mapProfileRow(row: SupabaseProfileRow): AppUser {
   return applyProfileOverride({
     id: row.id,
@@ -807,11 +847,11 @@ function buildCachedWorkspace(workspace: WorkspaceData): WorkspaceData {
   );
   const cachedUsers = [workspace.currentUser, ...workspace.users.filter((user) => user.id !== workspace.currentUser.id)].slice(0, 80);
 
-  return {
+  return ensureWorkspaceBaseline({
     ...workspace,
     users: cachedUsers,
     messagesByChat: cachedMessagesByChat
-  };
+  });
 }
 
 function loadWorkspaceCache() {
@@ -830,7 +870,10 @@ function loadWorkspaceCache() {
       return null;
     }
 
-    return parsed;
+    return {
+      ...parsed,
+      workspace: ensureWorkspaceBaseline(parsed.workspace)
+    };
   } catch {
     return null;
   }
@@ -856,6 +899,7 @@ function clearWorkspaceCache() {
   }
 
   window.localStorage.removeItem(workspaceCacheKey);
+  window.localStorage.removeItem(directoryCacheKey);
 }
 
 function applyProfileOverride(user: AppUser) {
@@ -973,6 +1017,28 @@ async function ensureDefaultMemberships(userId: string) {
   }
 }
 
+async function ensureDefaultChatRecord() {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.from("chats").upsert(
+    {
+      id: defaultFallbackChat.id,
+      title: defaultFallbackChat.title,
+      kind: defaultFallbackChat.kind,
+      description: defaultFallbackChat.description,
+      accent_color: defaultFallbackChat.accentColor,
+      is_default: true
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 async function fetchSupabaseDirectoryUsers(currentUserId: string) {
   if (!supabase) {
     return [] as AppUser[];
@@ -1026,6 +1092,7 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
   }
 
   try {
+    await ensureDefaultChatRecord();
     await ensureDefaultMemberships(user.id);
   } catch (membershipError) {
     if (looksLikeSupabaseAccessIssue(membershipError)) {
@@ -1121,16 +1188,24 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     messages.sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime());
   });
 
-  return buildWorkspace({
+  const chatRecords = ((chatRows as SupabaseChatRow[] | null) ?? []).map(mapChatRow);
+  if (!chatRecords.some((chat) => chat.id === defaultChatId)) {
+    chatRecords.unshift(defaultFallbackChat);
+  }
+  memberIdsByChat[defaultChatId] = Array.from(new Set([user.id, ...(memberIdsByChat[defaultChatId] ?? [])]));
+  messagesByChat[defaultChatId] = messagesByChat[defaultChatId] ?? [];
+
+  return ensureWorkspaceBaseline(
+    buildWorkspace({
     currentUserId: user.id,
     users,
-    chatRecords: ((chatRows as SupabaseChatRow[] | null) ?? []).map(mapChatRow),
+    chatRecords,
     memberIdsByChat,
     messagesByChat,
     mode: "supabase",
     syncLabel: "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u0443\u044e\u0442\u0441\u044f \u043c\u0435\u0436\u0434\u0443 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430\u043c\u0438.",
     universityName
-  });
+  }));
 }
 
 function applyIncomingMessage(current: WorkspaceData, message: ChatMessage) {
@@ -1200,8 +1275,10 @@ function App() {
       return [] as AppUser[];
     }
 
-    return mergeUsersById(directoryUsers, workspace.users).filter((user) => user.id !== workspace.currentUser.id);
-  }, [directoryUsers, workspace]);
+    return mergeUsersById(directoryUsers, workspace.users, rememberedUsers.map(mapRememberedUserToAppUser)).filter(
+      (user) => user.id !== workspace.currentUser.id
+    );
+  }, [directoryUsers, rememberedUsers, workspace]);
 
   const localDirectoryMatches = useMemo(() => {
     if (!searchValue) {
@@ -1264,6 +1341,14 @@ function App() {
   useEffect(() => {
     workspaceRef.current = workspace;
   }, [workspace]);
+
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase") {
+      return;
+    }
+
+    setWorkspace((current) => (current ? ensureWorkspaceBaseline(current) : current));
+  }, [workspace?.currentUser.id, workspace?.mode]);
 
   useEffect(() => {
     selectedChatIdRef.current = selectedChatId;
@@ -1358,6 +1443,55 @@ function App() {
       ignore = true;
       window.clearInterval(interval);
       channel.unsubscribe();
+    };
+  }, [workspace?.currentUser.id, workspace?.mode, hasActiveSession]);
+
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase" || !supabase || !hasActiveSession) {
+      return;
+    }
+
+    const client = supabase;
+    let ignore = false;
+
+    async function syncPresence() {
+      try {
+        const { data, error: sessionError } = await client.auth.getSession();
+        if (sessionError || !data.session?.user || ignore) {
+          return;
+        }
+
+        const syncedProfile = await ensureSupabaseProfile(data.session.user);
+        if (ignore) {
+          return;
+        }
+
+        await ensureDefaultChatRecord();
+        await ensureDefaultMemberships(data.session.user.id);
+        if (ignore) {
+          return;
+        }
+
+        setWorkspace((current) => {
+          if (!current) {
+            return ensureWorkspaceBaseline(buildSupabaseFallbackWorkspace(syncedProfile, "", readCachedDirectoryUsers()));
+          }
+
+          return ensureWorkspaceBaseline(mergeWorkspaceUsers(current, [syncedProfile]));
+        });
+      } catch {
+        // Keep the local workspace responsive even if background sync fails.
+      }
+    }
+
+    void syncPresence();
+    const interval = window.setInterval(() => {
+      void syncPresence();
+    }, 20000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(interval);
     };
   }, [workspace?.currentUser.id, workspace?.mode, hasActiveSession]);
 
@@ -1543,7 +1677,7 @@ function App() {
           return;
         }
 
-        setWorkspace(nextWorkspace);
+        setWorkspace(ensureWorkspaceBaseline(nextWorkspace));
         setSelectedChatId((current) =>
           current && nextWorkspace.chats.some((chat) => chat.id === current)
             ? current
@@ -1566,8 +1700,8 @@ function App() {
             setDirectoryUsers((current) => (current.length ? current : fallbackDirectory));
           }
 
-          const fallbackWorkspace = buildSupabaseFallbackWorkspace(fallbackProfile, "", fallbackDirectory);
-          setWorkspace((current) => current ?? fallbackWorkspace);
+          const fallbackWorkspace = ensureWorkspaceBaseline(buildSupabaseFallbackWorkspace(fallbackProfile, "", fallbackDirectory));
+          setWorkspace((current) => current ? ensureWorkspaceBaseline(current) : fallbackWorkspace);
           setSelectedChatId((current) => current ?? fallbackWorkspace.chats[0]?.id ?? null);
           setHasActiveSession(true);
           setConnectionLabel("reconnecting");
@@ -1799,7 +1933,7 @@ function App() {
       "Подключение к Supabase заняло слишком много времени."
     );
 
-    setWorkspace(nextWorkspace);
+    setWorkspace(ensureWorkspaceBaseline(nextWorkspace));
     setSelectedChatId(
       preferredChatId && nextWorkspace.chats.some((chat) => chat.id === preferredChatId)
         ? preferredChatId
