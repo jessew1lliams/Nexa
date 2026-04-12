@@ -6,6 +6,12 @@ alter table public.chats enable row level security;
 alter table public.chat_members enable row level security;
 alter table public.messages enable row level security;
 
+grant usage on schema public to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert on public.chats to authenticated;
+grant select, insert on public.chat_members to authenticated;
+grant select, insert on public.messages to authenticated;
+
 drop policy if exists "profiles_select_authenticated" on public.profiles;
 create policy "profiles_select_authenticated"
   on public.profiles for select
