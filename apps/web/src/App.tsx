@@ -26,7 +26,6 @@ const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
 const brandLogoUrl = `${import.meta.env.BASE_URL}nexa-logo.png`;
 const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom:telegram").trim();
-const vkProviderId = (import.meta.env.VITE_VK_PROVIDER_ID ?? "custom:vk").trim();
 const defaultChatId = "11111111-1111-4111-8111-111111111111";
 const accentPalette = ["#2795FF", "#F77F5A", "#47B39C", "#6D83F2", "#F2C14E", "#7E6BFF"];
 const connectionCopy = {
@@ -453,6 +452,65 @@ function getProfileAvatarDefault(user: SupabaseAuthUser) {
       identityData.photo_max_orig
     ) || undefined
   );
+}
+
+function mergeUsersById(...groups: AppUser[][]) {
+  const merged = new Map<string, AppUser>();
+
+  for (const group of groups) {
+    for (const user of group) {
+      merged.set(user.id, user);
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+function mergeWorkspaceUsers(current: WorkspaceData, incomingUsers: AppUser[]) {
+  const nextUsers = mergeUsersById(current.users, incomingUsers);
+
+  return buildWorkspace({
+    currentUserId: current.currentUser.id,
+    users: nextUsers,
+    chatRecords: current.chatRecords,
+    memberIdsByChat: current.memberIdsByChat,
+    messagesByChat: current.messagesByChat,
+    mode: current.mode,
+    syncLabel: current.syncLabel,
+    universityName: current.universityName
+  });
+}
+
+function upsertLocalDirectChat(current: WorkspaceData, target: AppUser, chatId: string) {
+  if (current.chatRecords.some((chat) => chat.id === chatId)) {
+    return current;
+  }
+
+  const nextChatRecord: ChatRecord = {
+    id: chatId,
+    title: target.name,
+    kind: "direct",
+    description: `@${target.username}`,
+    accentColor: target.accentColor,
+    isDefault: false
+  };
+
+  return buildWorkspace({
+    currentUserId: current.currentUser.id,
+    users: mergeUsersById(current.users, [target]),
+    chatRecords: [nextChatRecord, ...current.chatRecords],
+    memberIdsByChat: {
+      ...current.memberIdsByChat,
+      [chatId]: [current.currentUser.id, target.id]
+    },
+    messagesByChat: {
+      ...current.messagesByChat,
+      [chatId]: current.messagesByChat[chatId] ?? []
+    },
+    mode: current.mode,
+    syncLabel: current.syncLabel,
+    universityName: current.universityName
+  });
 }
 
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
@@ -1006,6 +1064,7 @@ function App() {
     loadWorkspaceCache()?.workspace ? "reconnecting" : "offline"
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [directoryUsers, setDirectoryUsers] = useState<AppUser[]>([]);
   const [directoryResults, setDirectoryResults] = useState<AppUser[]>([]);
   const [isDirectoryLoading, setIsDirectoryLoading] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
@@ -1017,6 +1076,7 @@ function App() {
   const realtimeChannelRef = useRef<ReturnType<NonNullable<typeof supabase>["channel"]> | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceRef = useRef<WorkspaceData | null>(workspace);
+  const selectedChatIdRef = useRef<string | null>(selectedChatId);
 
   const matchesSearch = (query: string, ...values: Array<string | null | undefined>) => {
     if (!query) {
@@ -1031,27 +1091,31 @@ function App() {
   const usersById = useMemo(() => new Map((workspace?.users ?? []).map((user) => [user.id, user])), [workspace?.users]);
   const searchValue = searchQuery.trim().toLowerCase();
 
-  const localDirectoryMatches = useMemo(() => {
-    if (!workspace || !searchValue) {
+  const directorySource = useMemo(() => {
+    if (!workspace) {
       return [] as AppUser[];
     }
 
-    return workspace.users.filter((user) => {
-      if (user.id === workspace.currentUser.id) {
-        return false;
-      }
+    return mergeUsersById(directoryUsers, workspace.users).filter((user) => user.id !== workspace.currentUser.id);
+  }, [directoryUsers, workspace]);
 
-      return matchesSearch(searchValue, user.name, user.username, user.bio, user.email);
-    });
-  }, [workspace, searchValue]);
-
-  const visibleUsers = useMemo(() => {
+  const localDirectoryMatches = useMemo(() => {
     if (!searchValue) {
       return [] as AppUser[];
     }
 
+    return directorySource.filter((user) => {
+      return matchesSearch(searchValue, user.name, user.username, user.bio, user.email);
+    });
+  }, [directorySource, searchValue]);
+
+  const visibleUsers = useMemo(() => {
+    if (!searchValue) {
+      return directorySource.slice(0, 18);
+    }
+
     return directoryResults;
-  }, [directoryResults, searchValue]);
+  }, [directoryResults, directorySource, searchValue]);
 
   const visibleChats = useMemo(() => {
     if (!workspace) {
@@ -1098,6 +1162,10 @@ function App() {
   }, [workspace]);
 
   useEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
+
+  useEffect(() => {
     saveDemoSessionUserId(null);
   }, []);
 
@@ -1128,6 +1196,60 @@ function App() {
     workspace?.currentUser.role,
     workspace?.currentUser.accentColor
   ]);
+
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase" || !supabase || !hasActiveSession) {
+      setDirectoryUsers([]);
+      return;
+    }
+
+    const client = supabase;
+    const currentUserId = workspace.currentUser.id;
+    let ignore = false;
+
+    async function refreshDirectory() {
+      try {
+        const { data, error: profilesError } = await client
+          .from("profiles")
+          .select("*")
+          .neq("id", currentUserId)
+          .order("full_name", { ascending: true });
+
+        if (ignore || profilesError) {
+          if (profilesError) {
+            throw profilesError;
+          }
+          return;
+        }
+
+        const nextUsers = ((data as SupabaseProfileRow[] | null) ?? []).map(mapProfileRow);
+        setDirectoryUsers(nextUsers);
+        setWorkspace((current) => (current ? mergeWorkspaceUsers(current, nextUsers) : current));
+      } catch {
+        if (!ignore) {
+          setDirectoryUsers((current) => current);
+        }
+      }
+    }
+
+    void refreshDirectory();
+    const interval = window.setInterval(() => {
+      void refreshDirectory();
+    }, 20000);
+
+    const channel = client
+      .channel(`nexa-profiles-${workspace.currentUser.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        void refreshDirectory();
+      })
+      .subscribe();
+
+    return () => {
+      ignore = true;
+      window.clearInterval(interval);
+      channel.unsubscribe();
+    };
+  }, [workspace?.currentUser.id, workspace?.mode, hasActiveSession]);
 
   useEffect(() => {
     if (!workspace || workspace.mode !== "supabase") {
@@ -1188,8 +1310,14 @@ function App() {
   }, [workspace, selectedChatId]);
 
   useEffect(() => {
-    if (!workspace || !searchValue) {
+    if (!workspace) {
       setDirectoryResults([]);
+      setIsDirectoryLoading(false);
+      return;
+    }
+
+    if (!searchValue) {
+      setDirectoryResults(directorySource.slice(0, 18));
       setIsDirectoryLoading(false);
       return;
     }
@@ -1209,7 +1337,7 @@ function App() {
         const sanitized = searchValue.replace(/[%_]/g, "").trim();
         if (!sanitized) {
           if (!ignore) {
-            setDirectoryResults(localDirectoryMatches);
+            setDirectoryResults(directorySource.slice(0, 18));
             setIsDirectoryLoading(false);
           }
           return;
@@ -1220,9 +1348,11 @@ function App() {
         if (!client) {
           return;
         }
-        const [nameResult, usernameResult] = await Promise.all([
-          client.from("profiles").select("*").ilike("full_name", pattern).neq("id", workspace.currentUser.id).limit(8),
-          client.from("profiles").select("*").ilike("username", pattern).neq("id", workspace.currentUser.id).limit(8)
+
+        const [nameResult, usernameResult, bioResult] = await Promise.all([
+          client.from("profiles").select("*").ilike("full_name", pattern).neq("id", workspace.currentUser.id).limit(24),
+          client.from("profiles").select("*").ilike("username", pattern).neq("id", workspace.currentUser.id).limit(24),
+          client.from("profiles").select("*").ilike("bio", pattern).neq("id", workspace.currentUser.id).limit(24)
         ]);
 
         if (ignore) {
@@ -1230,11 +1360,15 @@ function App() {
         }
 
         const merged = new Map(localDirectoryMatches.map((user) => [user.id, user]));
-        for (const row of ((nameResult.data as SupabaseProfileRow[] | null) ?? []).concat((usernameResult.data as SupabaseProfileRow[] | null) ?? [])) {
+        for (const row of [
+          ...(((nameResult.data as SupabaseProfileRow[] | null) ?? [])),
+          ...(((usernameResult.data as SupabaseProfileRow[] | null) ?? [])),
+          ...(((bioResult.data as SupabaseProfileRow[] | null) ?? []))
+        ]) {
           merged.set(row.id, mapProfileRow(row));
         }
 
-        setDirectoryResults(Array.from(merged.values()).slice(0, 8));
+        setDirectoryResults(Array.from(merged.values()).slice(0, 24));
       } catch {
         if (!ignore) {
           setDirectoryResults(localDirectoryMatches);
@@ -1244,13 +1378,13 @@ function App() {
           setIsDirectoryLoading(false);
         }
       }
-    }, 220);
+    }, 140);
 
     return () => {
       ignore = true;
       window.clearTimeout(timer);
     };
-  }, [workspace, searchValue, localDirectoryMatches]);
+  }, [workspace, searchValue, localDirectoryMatches, directorySource]);
 
   useEffect(() => {
     if (!supabaseEnabled || !supabase) {
@@ -1485,6 +1619,33 @@ function App() {
     };
   }, [workspace, usersById, hasActiveSession]);
 
+  useEffect(() => {
+    if (!workspace || workspace.mode !== "supabase" || !supabase || !hasActiveSession) {
+      return;
+    }
+
+    const client = supabase;
+    const channel = client
+      .channel(`nexa-chat-members-${workspace.currentUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_members",
+          filter: `user_id=eq.${workspace.currentUser.id}`
+        },
+        () => {
+          void refreshWorkspaceFromSession(selectedChatIdRef.current ?? undefined).catch(() => undefined);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [workspace?.currentUser.id, workspace?.mode, hasActiveSession]);
+
   async function refreshWorkspaceFromSession(preferredChatId?: string) {
     if (!supabase) {
       throw new Error("Служба Supabase ещё не подключена.");
@@ -1553,10 +1714,6 @@ function App() {
 
   async function handleTelegramLogin() {
     await handleProviderLogin(telegramProviderId, "Telegram");
-  }
-
-  async function handleVkLogin() {
-    await handleProviderLogin(vkProviderId, "VK");
   }
 
   async function handleOpenProfileChat(target: AppUser) {
@@ -1665,9 +1822,20 @@ function App() {
         }
       }
 
-      await refreshWorkspaceFromSession(directChatId);
+      setWorkspace((current) => (current ? upsertLocalDirectChat(current, target, directChatId!) : current));
+      setSelectedChatId(directChatId);
       setSearchQuery("");
       setDirectoryResults([]);
+
+      try {
+        await refreshWorkspaceFromSession(directChatId);
+      } catch (refreshError) {
+        if (!looksLikeSupabaseAccessIssue(refreshError)) {
+          throw refreshError;
+        }
+
+        setConnectionLabel("reconnecting");
+      }
     } catch (openError) {
       setError(formatUiErrorMessage(openError, "Не удалось открыть диалог."));
     } finally {
@@ -1891,15 +2059,12 @@ function App() {
           <div className="auth-header">
             <span className="eyebrow">доступ</span>
             <h2>Войти в Nexa</h2>
-            <p>Вход в Nexa выполняется через Telegram или VK.</p>
+            <p>Вход в Nexa выполняется через Telegram.</p>
           </div>
 
           <div className="auth-form auth-single-flow">
             <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading}>
               {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
-            </button>
-            <button type="button" className="vk-button" onClick={handleVkLogin} disabled={isBusy || isLoading}>
-              {isBusy || isLoading ? "Подключение..." : "Войти через VK"}
             </button>
           </div>
 
@@ -2027,14 +2192,9 @@ function App() {
 
         <div className="profile-drawer-footer">
           {!hasActiveSession && workspace.mode === "supabase" ? (
-            <>
-              <button type="button" className="profile-secondary-button" onClick={() => void handleTelegramLogin()}>
-                Telegram
-              </button>
-              <button type="button" className="profile-secondary-button" onClick={() => void handleVkLogin()}>
-                VK
-              </button>
-            </>
+            <button type="button" className="profile-secondary-button" onClick={() => void handleTelegramLogin()}>
+              Обновить вход
+            </button>
           ) : null}
           <button type="button" className="profile-primary-button" onClick={() => void handleSaveProfile()} disabled={isProfileSaving}>
             {isProfileSaving ? "Сохранение..." : "Сохранить"}
