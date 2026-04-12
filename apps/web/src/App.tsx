@@ -309,7 +309,15 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
     return "\u0411\u0430\u0437\u0430 Nexa \u0432 Supabase \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u0430. \u041d\u0443\u0436\u043d\u043e \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c SQL-\u0441\u0445\u0435\u043c\u0443 \u043f\u0440\u043e\u0435\u043a\u0442\u0430.";
   }
 
-  if (normalized.includes("schema cache") || normalized.includes("foreign key constraint")) {
+  if (
+    normalized.includes("foreign key constraint") ||
+    (normalized.includes("chat_members") && normalized.includes("profiles")) ||
+    (normalized.includes("violates foreign key constraint") && normalized.includes("user_id"))
+  ) {
+    return "Второй аккаунт ещё не появился в профилях Nexa. Нужно обновить SQL-патч в Supabase и один раз заново войти этим аккаунтом.";
+  }
+
+  if (normalized.includes("schema cache")) {
     return "Данные Nexa в Supabase ещё обновляются. Подключение можно повторить через несколько секунд.";
   }
 
