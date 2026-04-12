@@ -580,6 +580,37 @@ function upsertLocalDirectChat(current: WorkspaceData, target: AppUser, chatId: 
   });
 }
 
+async function ensureSupabaseChatReadyForWrite(chat: ChatSummary, currentUser: AppUser) {
+  if (!supabase) {
+    throw new Error("Supabase не подключён.");
+  }
+
+  const { error: chatError } = await supabase.from("chats").upsert(
+    {
+      id: chat.id,
+      title: chat.kind === "direct" ? "Диалог" : chat.title,
+      kind: chat.kind,
+      description: chat.description ?? "",
+      accent_color: chat.accentColor,
+      is_default: Boolean(chat.isDefault)
+    },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+
+  if (chatError) {
+    throw new Error(chatError.message);
+  }
+
+  const { error: membershipError } = await supabase.from("chat_members").upsert(
+    [{ chat_id: chat.id, user_id: currentUser.id }],
+    { onConflict: "chat_id,user_id", ignoreDuplicates: true }
+  );
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+}
+
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
   const { fullName, username } = getProfileDefaults(user);
   const avatarUrl = getProfileAvatarDefault(user);
@@ -2330,17 +2361,30 @@ function App() {
         throw new Error("Auth session missing");
       }
 
-      const { data, error: insertError } = await supabase
+      let data: SupabaseMessageRow | null = null;
+      let insertError: { message: string } | null = null;
+
+      ({ data, error: insertError } = await supabase
         .from("messages")
         .insert({ chat_id: activeChat.id, author_id: workspace.currentUser.id, content: text })
         .select()
-        .single();
+        .single());
 
-      if (insertError) {
-        throw new Error(insertError.message);
+      if (insertError && looksLikeSupabaseAccessIssue(insertError)) {
+        await ensureSupabaseChatReadyForWrite(activeChat, workspace.currentUser);
+
+        ({ data, error: insertError } = await supabase
+          .from("messages")
+          .insert({ chat_id: activeChat.id, author_id: workspace.currentUser.id, content: text })
+          .select()
+          .single());
       }
 
-      setWorkspace((current) => (current ? applyIncomingMessage(current, mapMessageRow(data as SupabaseMessageRow)) : current));
+      if (insertError || !data) {
+        throw new Error(insertError?.message ?? "Сообщение не отправилось.");
+      }
+
+      setWorkspace((current) => (current ? applyIncomingMessage(current, mapMessageRow(data)) : current));
       setDraft("");
       setError(null);
     } catch (sendError) {
