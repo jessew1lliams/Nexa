@@ -667,6 +667,39 @@ function resolveDirectPeerUserByChatId(
   return users.find((user) => user.id === peerId) ?? null;
 }
 
+function looksLikeDirectRpcCompatibilityIssue(error: unknown) {
+  const normalized = getErrorMessage(error).toLowerCase();
+
+  return [
+    "nexa_send_direct_message",
+    "nexa_ensure_direct_chat",
+    "could not find the function",
+    "permission denied for function",
+    "schema cache",
+    "pgrst202"
+  ].some((pattern) => normalized.includes(pattern));
+}
+
+async function insertDirectMessageThroughTable(chat: ChatSummary, currentUser: AppUser, users: AppUser[], content: string) {
+  if (!supabase) {
+    throw new Error("Supabase не подключён.");
+  }
+
+  await ensureSupabaseChatReadyForWrite(chat, currentUser, users);
+
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({ chat_id: chat.id, author_id: currentUser.id, content })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as SupabaseMessageRow;
+}
+
 async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: AppUser, users: AppUser[], text: string) {
   if (!supabase) {
     throw new Error("Supabase не подключён.");
@@ -695,11 +728,16 @@ async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: A
   });
 
   if (error) {
+    if (looksLikeDirectRpcCompatibilityIssue(error)) {
+      return insertDirectMessageThroughTable(chat, currentUser, users, content);
+    }
+
     throw new Error(error.message);
   }
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) {
+    return insertDirectMessageThroughTable(chat, currentUser, users, content);
     throw new Error("Сообщение не отправилось.");
   }
 
@@ -834,6 +872,58 @@ function ensureWorkspaceBaseline(workspace: WorkspaceData) {
     syncLabel: workspace.syncLabel,
     universityName: workspace.universityName
   });
+}
+
+function isDefaultOnlyWorkspace(workspace: WorkspaceData) {
+  return workspace.chatRecords.length === 1 && workspace.chatRecords[0]?.id === defaultChatId;
+}
+
+function hasExtraChats(workspace: WorkspaceData) {
+  return workspace.chatRecords.some((chat) => chat.id !== defaultChatId);
+}
+
+function shouldPreserveCurrentWorkspace(current: WorkspaceData | null, next: WorkspaceData) {
+  if (!current) {
+    return false;
+  }
+
+  if (current.currentUser.id !== next.currentUser.id) {
+    return false;
+  }
+
+  return hasExtraChats(current) && isDefaultOnlyWorkspace(next);
+}
+
+function mergeDegradedWorkspace(current: WorkspaceData, next: WorkspaceData) {
+  const currentUser = next.users.find((user) => user.id === current.currentUser.id) ?? next.currentUser ?? current.currentUser;
+  const mergedUsers = mergeUsersById(
+    [currentUser],
+    current.users.filter((user) => user.id !== currentUser.id),
+    next.users.filter((user) => user.id !== currentUser.id)
+  );
+
+  return ensureWorkspaceBaseline(
+    buildWorkspace({
+      currentUserId: currentUser.id,
+      users: mergedUsers,
+      chatRecords: current.chatRecords,
+      memberIdsByChat: current.memberIdsByChat,
+      messagesByChat: current.messagesByChat,
+      mode: next.mode,
+      syncLabel: next.syncLabel || current.syncLabel,
+      universityName: next.universityName || current.universityName
+    })
+  );
+}
+
+function reconcileWorkspaceSnapshot(current: WorkspaceData | null, next: WorkspaceData) {
+  const normalizedNext = ensureWorkspaceBaseline(next);
+
+  if (!shouldPreserveCurrentWorkspace(current, normalizedNext)) {
+    return normalizedNext;
+  }
+
+  return current ? mergeDegradedWorkspace(current, normalizedNext) : normalizedNext;
 }
 
 function mapProfileRow(row: SupabaseProfileRow): AppUser {
@@ -1060,8 +1150,9 @@ function saveWorkspaceCache(workspace: WorkspaceData, selectedChatId: string | n
     return;
   }
 
+  const existingWorkspace = loadWorkspaceCache()?.workspace ?? null;
   const payload: CachedWorkspacePayload = {
-    workspace: buildCachedWorkspace(workspace),
+    workspace: reconcileWorkspaceSnapshot(existingWorkspace, buildCachedWorkspace(workspace)),
     selectedChatId,
     cachedAt: new Date().toISOString()
   };
@@ -2002,11 +2093,12 @@ function App() {
           return;
         }
 
-        setWorkspace(ensureWorkspaceBaseline(nextWorkspace));
+        const resolvedWorkspace = reconcileWorkspaceSnapshot(workspaceRef.current, nextWorkspace);
+        setWorkspace(resolvedWorkspace);
         setSelectedChatId((current) =>
-          current && nextWorkspace.chats.some((chat) => chat.id === current)
+          current && resolvedWorkspace.chats.some((chat) => chat.id === current)
             ? current
-            : nextWorkspace.chats[0]?.id ?? null
+            : resolvedWorkspace.chats[0]?.id ?? null
         );
         setHasActiveSession(true);
         setConnectionLabel("live");
@@ -2269,11 +2361,12 @@ function App() {
       "Подключение к Supabase заняло слишком много времени."
     );
 
-    setWorkspace(ensureWorkspaceBaseline(nextWorkspace));
+    const resolvedWorkspace = reconcileWorkspaceSnapshot(workspaceRef.current, nextWorkspace);
+    setWorkspace(resolvedWorkspace);
     setSelectedChatId(
-      preferredChatId && nextWorkspace.chats.some((chat) => chat.id === preferredChatId)
+      preferredChatId && resolvedWorkspace.chats.some((chat) => chat.id === preferredChatId)
         ? preferredChatId
-        : nextWorkspace.chats[0]?.id ?? null
+        : resolvedWorkspace.chats[0]?.id ?? null
     );
     setHasActiveSession(true);
     setConnectionLabel("live");
@@ -2364,6 +2457,18 @@ function App() {
 
     try {
       const directChatId = buildDirectChatId(workspace.currentUser.id, target.id);
+      const pendingDirectChat: ChatSummary = {
+        id: directChatId,
+        title: target.name,
+        kind: "direct",
+        description: `@${target.username}`,
+        accentColor: target.accentColor,
+        isDefault: false,
+        memberIds: [workspace.currentUser.id, target.id],
+        lastMessagePreview: "Пока без сообщений",
+        lastMessageAt: null,
+        unreadCount: 0
+      };
       setDirectoryUsers((current) => {
         const nextUsers = mergeUsersById(current, [target]);
         saveCachedDirectoryUsers(nextUsers);
@@ -2373,6 +2478,20 @@ function App() {
       setSelectedChatId(directChatId);
       setSearchQuery("");
       setDirectoryResults([]);
+
+      await ensureSupabaseChatReadyForWrite(pendingDirectChat, workspace.currentUser, mergeUsersById(workspace.users, [target]));
+
+      void refreshWorkspaceFromSession(directChatId).catch((refreshError) => {
+        if (looksLikeSupabaseAccessIssue(refreshError)) {
+          setConnectionLabel("reconnecting");
+          return;
+        }
+
+        setError(formatUiErrorMessage(refreshError, "Диалог уже открыт, но обновление списка чатов не завершилось."));
+      });
+      return;
+
+      /*
 
       const { error: createChatError } = await supabase.from("chats").upsert(
         {
@@ -2413,6 +2532,7 @@ function App() {
 
         setConnectionLabel("reconnecting");
       }
+      */
     } catch (openError) {
       setError(formatUiErrorMessage(openError, "Не удалось открыть диалог."));
     } finally {
