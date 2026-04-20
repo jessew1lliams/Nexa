@@ -1,6 +1,9 @@
 alter table public.profiles
   add column if not exists avatar_url text;
 
+alter table public.profiles
+  add column if not exists crypto_public_key text;
+
 create or replace function public.nexa_resolve_username(base_username text, user_id uuid)
 returns text
 language plpgsql

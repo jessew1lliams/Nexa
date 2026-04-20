@@ -11,6 +11,7 @@ export interface AppUser {
   bio: string;
   email?: string;
   avatarUrl?: string;
+  cryptoPublicKey?: string;
 }
 
 export interface ChatRecord {
@@ -58,6 +59,7 @@ export interface SupabaseProfileRow {
   accent_color: string;
   bio: string | null;
   avatar_url?: string | null;
+  crypto_public_key?: string | null;
   created_at?: string;
 }
 

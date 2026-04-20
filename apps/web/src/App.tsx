@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
 
+import {
+  decryptDirectMessagePayload,
+  ensureStoredCryptoIdentity,
+  encryptDirectMessagePayload,
+  isEncryptedDirectMessagePayload
+} from "./crypto";
 import { supabase, supabaseEnabled } from "./supabase";
 import type {
   AppUser,
@@ -641,6 +647,26 @@ function resolveDirectPeerUser(chat: ChatSummary, currentUserId: string, users: 
   return users.find((user) => user.id !== currentUserId && user.name.trim().toLowerCase() === normalizedTitle) ?? null;
 }
 
+function shouldRetryProfilesWithoutOptionalColumns(error: { message: string } | null | undefined) {
+  const normalized = error?.message.toLowerCase() ?? "";
+  return normalized.includes("avatar_url") || normalized.includes("crypto_public_key");
+}
+
+function resolveDirectPeerUserByChatId(
+  chatId: string,
+  currentUserId: string,
+  memberIdsByChat: Record<string, string[]>,
+  users: AppUser[]
+) {
+  const memberIds = memberIdsByChat[chatId] ?? [];
+  const peerId = memberIds.find((userId) => userId !== currentUserId);
+  if (!peerId) {
+    return null;
+  }
+
+  return users.find((user) => user.id === peerId) ?? null;
+}
+
 async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: AppUser, users: AppUser[], text: string) {
   if (!supabase) {
     throw new Error("Supabase не подключён.");
@@ -651,10 +677,20 @@ async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: A
     throw new Error("Собеседник для личного чата пока не найден.");
   }
 
+  let content = text;
+  if (peerUser.cryptoPublicKey) {
+    await ensureStoredCryptoIdentity(currentUser.id);
+    content = await encryptDirectMessagePayload(currentUser.id, peerUser.cryptoPublicKey, chat.id, text);
+
+    if (content.length > maxMessageLength) {
+      throw new Error("Защищённое личное сообщение пока должно быть короче. Попробуйте сократить текст.");
+    }
+  }
+
   const { data, error } = await supabase.rpc("nexa_send_direct_message", {
     p_chat_id: chat.id,
     p_peer_user_id: peerUser.id,
-    p_content: text,
+    p_content: content,
     p_accent_color: chat.accentColor
   });
 
@@ -809,7 +845,8 @@ function mapProfileRow(row: SupabaseProfileRow): AppUser {
     role: row.role ?? "student",
     accentColor: row.accent_color,
     bio: row.bio ?? "РЈС‡Р°СЃС‚РЅРёРє Nexa.",
-    avatarUrl: row.avatar_url ?? undefined
+    avatarUrl: row.avatar_url ?? undefined,
+    cryptoPublicKey: row.crypto_public_key ?? undefined
   });
 }
 
@@ -824,7 +861,8 @@ function mapPartialProfileRow(
     role: row.role ?? "student",
     accentColor: row.accent_color,
     bio: row.bio ?? "Участник Nexa.",
-    avatarUrl: row.avatar_url ?? undefined
+    avatarUrl: row.avatar_url ?? undefined,
+    cryptoPublicKey: row.crypto_public_key ?? undefined
   });
 }
 
@@ -839,14 +877,40 @@ function mapChatRow(row: SupabaseChatRow): ChatRecord {
   };
 }
 
-function mapMessageRow(row: SupabaseMessageRow): ChatMessage {
+function mapMessageRow(row: SupabaseMessageRow, text = row.content): ChatMessage {
   return {
     id: row.id,
     chatId: row.chat_id,
     authorId: row.author_id,
-    text: row.content,
+    text,
     sentAt: row.created_at
   };
+}
+
+async function mapProtectedMessageRow(
+  row: SupabaseMessageRow,
+  options: {
+    chatKind?: ChatKind | null;
+    currentUserId: string;
+    memberIdsByChat: Record<string, string[]>;
+    users: AppUser[];
+  }
+) {
+  if (options.chatKind !== "direct" || !isEncryptedDirectMessagePayload(row.content)) {
+    return mapMessageRow(row);
+  }
+
+  const peerUser = resolveDirectPeerUserByChatId(row.chat_id, options.currentUserId, options.memberIdsByChat, options.users);
+  if (!peerUser?.cryptoPublicKey) {
+    return mapMessageRow(row, "Защищённое сообщение");
+  }
+
+  try {
+    const text = await decryptDirectMessagePayload(options.currentUserId, peerUser.cryptoPublicKey, row.chat_id, row.content);
+    return mapMessageRow(row, text);
+  } catch {
+    return mapMessageRow(row, "Защищённое сообщение");
+  }
 }
 
 function loadDemoSessionUserId() {
@@ -1082,6 +1146,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
   const { fullName, username } = getProfileDefaults(user);
   const storedOverride = getStoredProfileOverride(user.id);
   const defaultAvatarUrl = getProfileAvatarDefault(user);
+  const cryptoIdentity = await ensureStoredCryptoIdentity(user.id);
   const basePayload = {
     id: user.id,
     email: user.email ?? null,
@@ -1089,6 +1154,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     username,
     role: "student",
     accent_color: pickAccentColor(user.id),
+    crypto_public_key: cryptoIdentity.publicKey,
     bio: "РЈС‡Р°СЃС‚РЅРёРє Nexa С‡РµСЂРµР· GitHub Pages + Supabase."
   };
 
@@ -1104,7 +1170,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     .select()
     .single();
 
-  if (error && error.message.toLowerCase().includes("avatar_url")) {
+  if (shouldRetryProfilesWithoutOptionalColumns(error)) {
     ({ data, error } = await supabase.from("profiles").upsert(basePayload, { onConflict: "id" }).select().single());
   }
 
@@ -1124,6 +1190,7 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     role: "student",
     accentColor: pickAccentColor(user.id),
     avatarUrl: storedOverride.avatarUrl ?? defaultAvatarUrl ?? undefined,
+    cryptoPublicKey: cryptoIdentity.publicKey,
     bio: "Участник Nexa."
   });
 }
@@ -1174,11 +1241,11 @@ async function fetchSupabaseDirectoryUsers(currentUserId: string) {
 
   ({ data, error } = await supabase
     .from("profiles")
-    .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
+    .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
     .neq("id", currentUserId)
     .order("full_name", { ascending: true }));
 
-  if (error && error.message.toLowerCase().includes("avatar_url")) {
+  if (shouldRetryProfilesWithoutOptionalColumns(error)) {
     ({ data, error } = await supabase
       .from("profiles")
       .select("id,email,full_name,username,role,accent_color,bio")
@@ -1297,10 +1364,10 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
 
   ({ data: profileRows, error: profileError } = await supabase
     .from("profiles")
-    .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
+      .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
     .in("id", memberIds.length ? memberIds : [user.id]));
 
-  if (profileError && profileError.message.toLowerCase().includes("avatar_url")) {
+  if (shouldRetryProfilesWithoutOptionalColumns(profileError)) {
     ({ data: profileRows, error: profileError } = await supabase
       .from("profiles")
       .select("id,email,full_name,username,role,accent_color,bio")
@@ -1329,8 +1396,21 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
     acc[chatId] = [...(acc[chatId] ?? []), String(row.user_id)];
     return acc;
   }, {});
-  const messagesByChat = ((messageRows as SupabaseMessageRow[] | null) ?? []).reduce<Record<string, ChatMessage[]>>((acc, row) => {
-    const message = mapMessageRow(row);
+  const chatKindById = ((chatRows as SupabaseChatRow[] | null) ?? []).reduce<Record<string, ChatKind>>((acc, row) => {
+    acc[String(row.id)] = row.kind;
+    return acc;
+  }, {});
+  const resolvedMessages = await Promise.all(
+    ((messageRows as SupabaseMessageRow[] | null) ?? []).map((row) =>
+      mapProtectedMessageRow(row, {
+        chatKind: chatKindById[String(row.chat_id)],
+        currentUserId: user.id,
+        memberIdsByChat,
+        users
+      })
+    )
+  );
+  const messagesByChat = resolvedMessages.reduce<Record<string, ChatMessage[]>>((acc, message) => {
     acc[message.chatId] = [...(acc[message.chatId] ?? []), message];
     return acc;
   }, {});
@@ -1387,6 +1467,7 @@ function App() {
   const [errorVisible, setErrorVisible] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingOAuthUrl, setPendingOAuthUrl] = useState<string | null>(null);
+  const [isPreparingTelegramLogin, setIsPreparingTelegramLogin] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
   const [, setLoadingStatus] = useState("Подключение к Nexa.");
@@ -1407,6 +1488,7 @@ function App() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const workspaceRef = useRef<WorkspaceData | null>(workspace);
   const selectedChatIdRef = useRef<string | null>(selectedChatId);
+  const oauthPrefetchAttemptedRef = useRef(false);
 
   const matchesSearch = (query: string, ...values: Array<string | null | undefined>) => {
     if (!query) {
@@ -1511,6 +1593,13 @@ function App() {
 
   useEffect(() => {
     if (!workspace) {
+      oauthPrefetchAttemptedRef.current = false;
+      setPendingOAuthUrl(null);
+    }
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!workspace) {
       setProfileNameDraft("");
       setProfileAvatarDraft(undefined);
       setIsProfilePanelOpen(false);
@@ -1559,11 +1648,11 @@ function App() {
 
         ({ data, error: profilesError } = await client
           .from("profiles")
-          .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
+          .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
           .neq("id", currentUserId)
           .order("full_name", { ascending: true }));
 
-        if (profilesError && profilesError.message.toLowerCase().includes("avatar_url")) {
+        if (shouldRetryProfilesWithoutOptionalColumns(profilesError)) {
           ({ data, error: profilesError } = await client
             .from("profiles")
             .select("id,email,full_name,username,role,accent_color,bio")
@@ -1762,12 +1851,12 @@ function App() {
 
         ({ data, error: searchError } = await client
           .from("profiles")
-          .select("id,email,full_name,username,role,accent_color,bio,avatar_url")
+          .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
           .neq("id", workspace.currentUser.id)
           .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
           .limit(48));
 
-        if (searchError && searchError.message.toLowerCase().includes("avatar_url")) {
+        if (shouldRetryProfilesWithoutOptionalColumns(searchError)) {
           ({ data, error: searchError } = await client
             .from("profiles")
             .select("id,email,full_name,username,role,accent_color,bio")
@@ -1815,6 +1904,64 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [workspace, searchValue, localDirectoryMatches, directorySource]);
+
+  useEffect(() => {
+    if (workspace || !supabaseEnabled || !supabase) {
+      return;
+    }
+
+    if (hasAuthCallbackParams() || hasActiveSession || pendingOAuthUrl || oauthPrefetchAttemptedRef.current) {
+      return;
+    }
+
+    let ignore = false;
+    const client = supabase;
+    oauthPrefetchAttemptedRef.current = true;
+    setIsPreparingTelegramLogin(true);
+
+    async function prefetchTelegramOAuthUrl() {
+      try {
+        const redirectTo = `${window.location.origin}${window.location.pathname}`;
+        const { data, error: oauthError } = await client.auth.signInWithOAuth({
+          provider: telegramProviderId as never,
+          options: {
+            redirectTo,
+            scopes: "openid profile",
+            skipBrowserRedirect: true
+          }
+        });
+
+        if (ignore) {
+          return;
+        }
+
+        if (oauthError) {
+          throw oauthError;
+        }
+
+        if (!data?.url) {
+          throw new Error("Telegram redirect url missing");
+        }
+
+        setPendingOAuthUrl(data.url);
+      } catch {
+        if (!ignore) {
+          setPendingOAuthUrl(null);
+          oauthPrefetchAttemptedRef.current = false;
+        }
+      } finally {
+        if (!ignore) {
+          setIsPreparingTelegramLogin(false);
+        }
+      }
+    }
+
+    void prefetchTelegramOAuthUrl();
+
+    return () => {
+      ignore = true;
+    };
+  }, [workspace, hasActiveSession, pendingOAuthUrl]);
 
   useEffect(() => {
     if (!supabaseEnabled || !supabase) {
@@ -2023,7 +2170,13 @@ function App() {
           return;
         }
 
-        const message = mapMessageRow(row);
+        const chatKind = workspace.chatRecords.find((chat) => chat.id === row.chat_id)?.kind;
+        const message = await mapProtectedMessageRow(row, {
+          chatKind,
+          currentUserId: workspace.currentUser.id,
+          memberIdsByChat: workspace.memberIdsByChat,
+          users: workspace.users
+        });
         setWorkspace((current) => (current ? applyIncomingMessage(current, message) : current));
 
         if (!usersById.has(message.authorId)) {
@@ -2157,7 +2310,7 @@ function App() {
       }
 
       setPendingOAuthUrl(data.url);
-      window.location.assign(data.url);
+      window.location.replace(data.url);
       window.setTimeout(() => {
         setIsBusy(false);
         setNotice(`Если вход через ${label} не открылся автоматически, можно продолжить вручную.`);
@@ -2466,7 +2619,13 @@ function App() {
         throw new Error(insertError?.message ?? "Сообщение не отправилось.");
       }
 
-      setWorkspace((current) => (current ? applyIncomingMessage(current, mapMessageRow(data)) : current));
+      const message = await mapProtectedMessageRow(data, {
+        chatKind: activeChat.kind,
+        currentUserId: workspace.currentUser.id,
+        memberIdsByChat: workspace.memberIdsByChat,
+        users: workspace.users
+      });
+      setWorkspace((current) => (current ? applyIncomingMessage(current, message) : current));
       setDraft("");
       setError(null);
     } catch (sendError) {
@@ -2504,9 +2663,22 @@ function App() {
           </div>
 
           <div className="auth-form auth-single-flow">
-            <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading}>
+            {pendingOAuthUrl && !isBusy && !isLoading ? (
+              <a
+                className="telegram-button telegram-button-link"
+                href={pendingOAuthUrl}
+                onClick={() => {
+                  setNotice("РћС‚РєСЂС‹РІР°СЋ РІС…РѕРґ С‡РµСЂРµР· Telegram.");
+                  setError(null);
+                }}
+              >
+                Р’РѕР№С‚Рё С‡РµСЂРµР· Telegram
+              </a>
+            ) : (
+              <button type="button" className="telegram-button" onClick={handleTelegramLogin} disabled={isBusy || isLoading || isPreparingTelegramLogin}>
               {isBusy || isLoading ? "Подключение..." : "Войти через Telegram"}
-            </button>
+              </button>
+            )}
             {pendingOAuthUrl ? (
               <a className="oauth-manual-link" href={pendingOAuthUrl}>
                 Открыть вход вручную

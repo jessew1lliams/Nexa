@@ -8,12 +8,16 @@ create table if not exists public.profiles (
   role text not null default 'student' check (role in ('student', 'curator', 'teacher')),
   accent_color text not null default '#2795FF',
   avatar_url text,
+  crypto_public_key text,
   bio text not null default 'РЈС‡Р°СЃС‚РЅРёРє Nexa.',
   created_at timestamptz not null default now()
 );
 
 alter table public.profiles
   add column if not exists avatar_url text;
+
+alter table public.profiles
+  add column if not exists crypto_public_key text;
 
 create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
