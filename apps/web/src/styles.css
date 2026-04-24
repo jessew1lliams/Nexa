@@ -895,6 +895,53 @@ button {
   margin-top: 16px;
 }
 
+.auth-field {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.auth-input {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 20px;
+  border: 1px solid rgba(38, 149, 255, 0.18);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-soft);
+  color: var(--text);
+  padding: 0 18px;
+}
+
+.auth-input::placeholder {
+  color: #8ca1b3;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: rgba(38, 149, 255, 0.38);
+  box-shadow:
+    0 0 0 4px rgba(38, 149, 255, 0.12),
+    var(--shadow-soft);
+}
+
+.auth-action-row {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-action-row .primary-button,
+.auth-action-row .ghost-button {
+  width: 100%;
+  margin-top: 0;
+}
+
 .auth-toggle-row {
   display: flex;
   gap: 10px;

@@ -157,6 +157,7 @@ const demoSeedMessages: Record<string, ChatMessage[]> = {
 type ConnectionLabel = keyof typeof connectionCopy;
 type AuthScreen = "login" | "signup";
 type SignMode = "supabase" | "demo";
+type AuthMethod = "telegram" | "phone";
 
 type RememberedDeviceUser = Pick<AppUser, "id" | "name" | "username" | "accentColor" | "avatarUrl" | "role"> & {
   lastSeenAt: string;
@@ -246,6 +247,36 @@ function normalizeUsername(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
 }
 
+function normalizePhoneNumber(value: string) {
+  const raw = value.trim();
+  if (!raw) {
+    return "";
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) {
+    return "";
+  }
+
+  if (raw.startsWith("+")) {
+    return `+${digits}`;
+  }
+
+  if (digits.length === 11 && digits.startsWith("8")) {
+    return `+7${digits.slice(1)}`;
+  }
+
+  if (digits.length === 10) {
+    return `+7${digits}`;
+  }
+
+  return `+${digits}`;
+}
+
+function isValidPhoneNumber(value: string) {
+  return /^\+[1-9]\d{9,14}$/.test(value);
+}
+
 function pickAccentColor(seed: string) {
   const index = Math.abs(seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % accentPalette.length;
   return accentPalette[index];
@@ -309,6 +340,35 @@ function formatUiErrorMessage(error: unknown, fallback: string) {
 
   if (normalized.includes("update your telegram app") || normalized.includes("confirm the login request from the website")) {
     return "\u0422\u0435\u043a\u0443\u0449\u0430\u044f \u0432\u0435\u0440\u0441\u0438\u044f Telegram \u043d\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043f \u0432\u0445\u043e\u0434\u0430.";
+  }
+
+  if (
+    normalized.includes("phone provider") ||
+    (normalized.includes("sms") && normalized.includes("provider")) ||
+    normalized.includes("unsupported channel")
+  ) {
+    return "В Supabase ещё не настроена отправка SMS-кодов для входа по номеру.";
+  }
+
+  if (
+    normalized.includes("otp expired") ||
+    normalized.includes("token has expired") ||
+    (normalized.includes("sms") && normalized.includes("expired"))
+  ) {
+    return "Код из SMS уже истёк. Нужно запросить новый.";
+  }
+
+  if (
+    normalized.includes("invalid otp") ||
+    normalized.includes("otp code is invalid") ||
+    normalized.includes("token is invalid") ||
+    (normalized.includes("otp") && normalized.includes("invalid"))
+  ) {
+    return "Код из SMS не подошёл. Нужно проверить цифры и повторить.";
+  }
+
+  if (normalized.includes("rate limit") || normalized.includes("too many requests")) {
+    return "Слишком много попыток входа. Повторить можно чуть позже.";
   }
 
   if ((normalized.includes("relation") && normalized.includes("does not exist")) || normalized.includes("could not find the table")) {
@@ -481,6 +541,15 @@ function getProfileDefaults(user: SupabaseAuthUser) {
   const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
   const activeProvider = pickFirstText(appMetadata.provider);
   const identityData = getIdentityData(user, activeProvider);
+  const phoneDigits = pickFirstText(
+    user.phone,
+    metadata.phone,
+    metadata.phone_number,
+    identityData.phone,
+    identityData.phone_number
+  ).replace(/\D/g, "");
+  const phoneLabel = phoneDigits ? `+${phoneDigits}` : "";
+  const phoneUsername = phoneDigits ? `phone_${phoneDigits}` : "";
   const combinedName = [pickFirstText(identityData.first_name), pickFirstText(identityData.last_name)].filter(Boolean).join(" ");
   const fullName = pickFirstText(
     metadata.full_name,
@@ -488,6 +557,7 @@ function getProfileDefaults(user: SupabaseAuthUser) {
     identityData.full_name,
     identityData.name,
     combinedName,
+    phoneLabel ? `Участник ${phoneLabel}` : "",
     user.email?.split("@")[0],
     "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ Nexa"
   );
@@ -502,6 +572,7 @@ function getProfileDefaults(user: SupabaseAuthUser) {
       identityData.screen_name,
       identityData.domain,
       identityData.nickname,
+      phoneUsername,
       user.email?.split("@")[0],
       `user_${user.id.slice(0, 8)}`
     )
@@ -1557,8 +1628,13 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [errorVisible, setErrorVisible] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>("telegram");
   const [pendingOAuthUrl, setPendingOAuthUrl] = useState<string | null>(null);
   const [isPreparingTelegramLogin, setIsPreparingTelegramLogin] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneOtpCode, setPhoneOtpCode] = useState("");
+  const [pendingPhoneNumber, setPendingPhoneNumber] = useState("");
+  const [isPhoneOtpSent, setIsPhoneOtpSent] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [isLoading, setIsLoading] = useState(() => supabaseEnabled && hasAuthCallbackParams());
   const [, setLoadingStatus] = useState("Подключение к Nexa.");
@@ -1997,7 +2073,7 @@ function App() {
   }, [workspace, searchValue, localDirectoryMatches, directorySource]);
 
   useEffect(() => {
-    if (workspace || !supabaseEnabled || !supabase) {
+    if (workspace || !supabaseEnabled || !supabase || authMethod !== "telegram") {
       return;
     }
 
@@ -2052,7 +2128,7 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [workspace, hasActiveSession, pendingOAuthUrl]);
+  }, [authMethod, workspace, hasActiveSession, pendingOAuthUrl]);
 
   useEffect(() => {
     if (!supabaseEnabled || !supabase) {
@@ -2373,6 +2449,21 @@ function App() {
     setError(null);
   }
 
+  function handleSelectAuthMethod(nextMethod: AuthMethod) {
+    setAuthMethod(nextMethod);
+    setError(null);
+    setNotice(null);
+
+    if (nextMethod === "telegram") {
+      setPhoneOtpCode("");
+      oauthPrefetchAttemptedRef.current = false;
+      return;
+    }
+
+    setPendingOAuthUrl(null);
+    setIsPreparingTelegramLogin(false);
+  }
+
   async function handleProviderLogin(providerId: string, label: string) {
     if (!supabase) {
       setError("Сайт ещё не подключён к Supabase.");
@@ -2419,6 +2510,105 @@ function App() {
 
   async function handleTelegramLogin() {
     await handleProviderLogin(telegramProviderId, "Telegram");
+  }
+
+  async function handlePhoneCodeRequest() {
+    if (!supabase) {
+      setError("Сайт ещё не подключён к Supabase.");
+      return;
+    }
+
+    const normalizedPhone = normalizePhoneNumber(phoneInput);
+    if (!isValidPhoneNumber(normalizedPhone)) {
+      setError("Номер нужно указать в международном формате, например +79991234567.");
+      return;
+    }
+
+    setIsBusy(true);
+    setError(null);
+    setPendingOAuthUrl(null);
+    setNotice(`Отправляю SMS-код на ${normalizedPhone}.`);
+
+    try {
+      const { error: otpError } = await withTimeout(
+        supabase.auth.signInWithOtp({
+          phone: normalizedPhone,
+          options: {
+            channel: "sms",
+            shouldCreateUser: true
+          }
+        }),
+        15000,
+        "Отправка SMS-кода заняла слишком много времени."
+      );
+
+      if (otpError) {
+        throw otpError;
+      }
+
+      setPhoneInput(normalizedPhone);
+      setPendingPhoneNumber(normalizedPhone);
+      setPhoneOtpCode("");
+      setIsPhoneOtpSent(true);
+      setNotice(`Код отправлен на ${normalizedPhone}. Теперь его можно ввести ниже.`);
+    } catch (otpError) {
+      setNotice(null);
+      setError(formatUiErrorMessage(otpError, "Не удалось отправить SMS-код."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handlePhoneCodeVerify() {
+    if (!supabase) {
+      setError("Сайт ещё не подключён к Supabase.");
+      return;
+    }
+
+    if (!pendingPhoneNumber) {
+      setError("Сначала нужно запросить SMS-код.");
+      return;
+    }
+
+    const code = phoneOtpCode.trim();
+    if (!code) {
+      setError("Нужно ввести код из SMS.");
+      return;
+    }
+
+    setIsBusy(true);
+    setError(null);
+    setNotice(`Подтверждаю вход для ${pendingPhoneNumber}.`);
+
+    try {
+      const { data, error: verifyError } = await withTimeout(
+        supabase.auth.verifyOtp({
+          phone: pendingPhoneNumber,
+          token: code,
+          type: "sms"
+        }),
+        15000,
+        "Подтверждение кода заняло слишком много времени."
+      );
+
+      if (verifyError) {
+        throw verifyError;
+      }
+
+      if (!data.session?.user) {
+        throw new Error("Auth session missing");
+      }
+
+      setHasActiveSession(true);
+      setNotice("Вход подтверждён. Загружаю Nexa.");
+      await refreshWorkspaceFromSession();
+      setPhoneOtpCode("");
+    } catch (verifyError) {
+      setNotice(null);
+      setError(formatUiErrorMessage(verifyError, "Не удалось подтвердить код из SMS."));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function handleOpenProfileChat(target: AppUser) {
@@ -2673,6 +2863,9 @@ function App() {
     setDraft("");
     setSearchQuery("");
     setDirectoryResults([]);
+    setPhoneOtpCode("");
+    setPendingPhoneNumber("");
+    setIsPhoneOtpSent(false);
     setNotice(null);
     setHasActiveSession(false);
     setConnectionLabel("offline");
@@ -2783,7 +2976,26 @@ function App() {
           </div>
 
           <div className="auth-form auth-single-flow">
-            {pendingOAuthUrl && !isBusy && !isLoading ? (
+            <div className="auth-toggle-row compact-row">
+              <button
+                type="button"
+                className={`toggle-pill ${authMethod === "telegram" ? "is-active" : ""}`}
+                onClick={() => handleSelectAuthMethod("telegram")}
+              >
+                Telegram
+              </button>
+              <button
+                type="button"
+                className={`toggle-pill ${authMethod === "phone" ? "is-active" : ""}`}
+                onClick={() => handleSelectAuthMethod("phone")}
+              >
+                Номер телефона
+              </button>
+            </div>
+
+            {authMethod === "telegram" ? (
+              <>
+                {pendingOAuthUrl && !isBusy && !isLoading ? (
               <a
                 className="telegram-button telegram-button-link"
                 href={pendingOAuthUrl}
@@ -2804,6 +3016,80 @@ function App() {
                 Открыть вход вручную
               </a>
             ) : null}
+              </>
+            ) : (
+              <>
+                <div className="helper-card">
+                  <strong>Вход по номеру телефона</strong>
+                  <p>Сначала приходит SMS-код, потом Nexa открывается как обычный аккаунт.</p>
+                </div>
+
+                <label className="auth-field">
+                  <span className="auth-label">Номер телефона</span>
+                  <input
+                    className="auth-input"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+79991234567"
+                    value={phoneInput}
+                    onChange={(event) => {
+                      setPhoneInput(event.target.value);
+                      if (pendingPhoneNumber && event.target.value.trim() !== pendingPhoneNumber) {
+                        setIsPhoneOtpSent(false);
+                        setPendingPhoneNumber("");
+                        setPhoneOtpCode("");
+                      }
+                    }}
+                  />
+                </label>
+
+                {isPhoneOtpSent ? (
+                  <>
+                    <label className="auth-field">
+                      <span className="auth-label">Код из SMS</span>
+                      <input
+                        className="auth-input"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="123456"
+                        value={phoneOtpCode}
+                        onChange={(event) => setPhoneOtpCode(event.target.value.replace(/\s+/g, ""))}
+                      />
+                    </label>
+
+                    <div className="auth-action-row">
+                      <button
+                        type="button"
+                        className="primary-button compact"
+                        onClick={() => void handlePhoneCodeVerify()}
+                        disabled={isBusy}
+                      >
+                        {isBusy ? "Проверка..." : "Подтвердить код"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button compact"
+                        onClick={() => void handlePhoneCodeRequest()}
+                        disabled={isBusy}
+                      >
+                        Отправить код заново
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="primary-button compact"
+                    onClick={() => void handlePhoneCodeRequest()}
+                    disabled={isBusy}
+                  >
+                    {isBusy ? "Отправка..." : "Получить код"}
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           {rememberedUsers.length ? (
