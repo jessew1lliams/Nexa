@@ -1,5 +1,7 @@
 export type ChatKind = "group" | "direct" | "channel";
-export type UserRole = "student" | "curator" | "teacher";
+export type UserRole = "member" | "moderator" | "owner";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type NicknameGlow = "none" | "soft" | "strong";
 export type RuntimeMode = "demo" | "supabase";
 
 export interface AppUser {
@@ -7,10 +9,19 @@ export interface AppUser {
   name: string;
   username: string;
   role: UserRole;
+  approvalStatus: ApprovalStatus;
   accentColor: string;
+  nicknameGlow: NicknameGlow;
+  allowGifs: boolean;
   bio: string;
   email?: string;
+  phone?: string;
   avatarUrl?: string;
+  birthDate?: string;
+  mutedUntil?: string;
+  bannedAt?: string;
+  bannedBy?: string;
+  banReason?: string;
   cryptoPublicKey?: string;
 }
 
@@ -55,10 +66,19 @@ export interface SupabaseProfileRow {
   email: string | null;
   full_name: string;
   username: string;
-  role: UserRole | null;
+  role: string | null;
+  approval_status?: string | null;
   accent_color: string;
+  nickname_glow?: string | null;
+  allow_gifs?: boolean | null;
   bio: string | null;
+  phone?: string | null;
   avatar_url?: string | null;
+  birth_date?: string | null;
+  muted_until?: string | null;
+  banned_at?: string | null;
+  banned_by?: string | null;
+  ban_reason?: string | null;
   crypto_public_key?: string | null;
   created_at?: string;
 }

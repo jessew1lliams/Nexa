@@ -10,15 +10,18 @@ import {
 } from "./crypto";
 import { supabase, supabaseEnabled } from "./supabase";
 import type {
+  ApprovalStatus,
   AppUser,
   ChatKind,
   ChatMessage,
   ChatRecord,
   ChatSummary,
+  NicknameGlow,
   SupabaseChatMemberRow,
   SupabaseChatRow,
   SupabaseMessageRow,
   SupabaseProfileRow,
+  UserRole,
   WorkspaceData
 } from "./types";
 
@@ -26,6 +29,7 @@ const demoSessionKey = "nexa-demo-session-v1";
 const demoMessagesKey = "nexa-demo-messages-v1";
 const profileOverridesKey = "nexa-profile-overrides-v1";
 const rememberedUsersKey = "nexa-remembered-users-v1";
+const profileNotesKey = "nexa-profile-notes-v1";
 const workspaceCacheKey = "nexa-workspace-cache-v2";
 const directoryCacheKey = "nexa-directory-users-v2";
 const maxMessageLength = 1500;
@@ -33,6 +37,10 @@ const universityName = "Nexa University";
 const githubRepoUrl = "https://github.com/jessew1lliams/Nexa";
 const brandLogoUrl = `${import.meta.env.BASE_URL}nexa-logo.png`;
 const telegramProviderId = (import.meta.env.VITE_TELEGRAM_PROVIDER_ID ?? "custom:telegram").trim();
+const ownerUsername = "shqwedd";
+const supabaseProfileSelect =
+  "id,email,full_name,username,role,approval_status,accent_color,nickname_glow,allow_gifs,bio,phone,avatar_url,birth_date,muted_until,banned_at,banned_by,ban_reason,crypto_public_key";
+const legacySupabaseProfileSelect = "id,email,full_name,username,role,accent_color,bio";
 const defaultChatId = "11111111-1111-4111-8111-111111111111";
 const defaultFallbackChat: ChatRecord = {
   id: defaultChatId,
@@ -59,32 +67,44 @@ const demoUsers: AppUser[] = [
     id: "demo-1",
     name: "РўРІРѕР№ Р°РєРєР°СѓРЅС‚",
     username: "nexa_user",
-    role: "student",
+    role: "member",
+    approvalStatus: "approved",
     accentColor: "#2795FF",
+    nicknameGlow: "none",
+    allowGifs: true,
     bio: "Р›РёС‡РЅС‹Р№ РїСЂРѕС„РёР»СЊ РґР»СЏ Р·РЅР°РєРѕРјСЃС‚РІР° СЃ РёРЅС‚РµСЂС„РµР№СЃРѕРј Nexa."
   },
   {
     id: "demo-2",
     name: "РЎС‚Р°СЂРѕСЃС‚Р° РіСЂСѓРїРїС‹",
     username: "group_lead",
-    role: "student",
+    role: "member",
+    approvalStatus: "approved",
     accentColor: "#F77F5A",
+    nicknameGlow: "none",
+    allowGifs: true,
     bio: "РЎР»РµРґРёС‚, С‡С‚РѕР±С‹ РІР°Р¶РЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ РЅРµ С‚РµСЂСЏР»РёСЃСЊ."
   },
   {
     id: "demo-3",
     name: "РћРґРЅРѕРіСЂСѓРїРїРЅРёРє",
     username: "student_room",
-    role: "student",
+    role: "member",
+    approvalStatus: "approved",
     accentColor: "#47B39C",
+    nicknameGlow: "none",
+    allowGifs: true,
     bio: "Р’СЃРµРіРґР° РЅР° СЃРІСЏР·Рё РІ РѕР±С‰РµРј С‡Р°С‚Рµ."
   },
   {
     id: "demo-4",
     name: "РљСѓСЂР°С‚РѕСЂ",
     username: "curator",
-    role: "curator",
+    role: "moderator",
+    approvalStatus: "approved",
     accentColor: "#6D83F2",
+    nicknameGlow: "soft",
+    allowGifs: true,
     bio: "РџСѓР±Р»РёРєСѓРµС‚ РѕР±СЉСЏРІР»РµРЅРёСЏ Рё РІР°Р¶РЅС‹Рµ РЅРѕРІРѕСЃС‚Рё."
   }
 ];
@@ -163,6 +183,8 @@ type RememberedDeviceUser = Pick<AppUser, "id" | "name" | "username" | "accentCo
   lastSeenAt: string;
 };
 
+type StoredProfileOverride = Partial<Pick<AppUser, "name" | "avatarUrl" | "username" | "bio" | "birthDate">>;
+
 type CachedWorkspacePayload = {
   workspace: WorkspaceData;
   selectedChatId: string | null;
@@ -175,7 +197,10 @@ function mapRememberedUserToAppUser(user: RememberedDeviceUser): AppUser {
     name: user.name,
     username: user.username,
     role: user.role,
+    approvalStatus: "approved",
     accentColor: user.accentColor,
+    nicknameGlow: "none",
+    allowGifs: true,
     avatarUrl: user.avatarUrl,
     bio: "Профиль, который уже входил в Nexa на этом устройстве."
   };
@@ -245,6 +270,109 @@ function formatRememberedStamp(isoTimestamp: string) {
 
 function normalizeUsername(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+}
+
+function normalizeUserRole(value: string | null | undefined): UserRole {
+  if (value === "owner" || value === "moderator" || value === "member") {
+    return value;
+  }
+
+  return "member";
+}
+
+function normalizeApprovalStatus(value: string | null | undefined): ApprovalStatus {
+  if (value === "pending" || value === "approved" || value === "rejected") {
+    return value;
+  }
+
+  return "approved";
+}
+
+function normalizeNicknameGlow(value: string | null | undefined): NicknameGlow {
+  if (value === "soft" || value === "strong" || value === "none") {
+    return value;
+  }
+
+  return "none";
+}
+
+function isOwnerUser(user: Pick<AppUser, "role">) {
+  return normalizeUserRole(user.role) === "owner";
+}
+
+function isModeratorUser(user: Pick<AppUser, "role">) {
+  const role = normalizeUserRole(user.role);
+  return role === "moderator" || role === "owner";
+}
+
+function isApprovedUser(user: Pick<AppUser, "approvalStatus" | "role">) {
+  return normalizeApprovalStatus(user.approvalStatus) === "approved" || isOwnerUser(user);
+}
+
+function isUserMuted(user: Pick<AppUser, "mutedUntil">) {
+  if (!user.mutedUntil) {
+    return false;
+  }
+
+  return new Date(user.mutedUntil).getTime() > Date.now();
+}
+
+function isUserBanned(user: Pick<AppUser, "bannedAt">) {
+  return Boolean(user.bannedAt);
+}
+
+function canAccessAdmin(user: Pick<AppUser, "role">) {
+  return isOwnerUser(user);
+}
+
+function canModerateUsers(user: Pick<AppUser, "role">) {
+  return isModeratorUser(user);
+}
+
+function canAccessWorkspace(user: Pick<AppUser, "approvalStatus" | "role">) {
+  return isApprovedUser(user);
+}
+
+function canSendMessages(user: Pick<AppUser, "approvalStatus" | "role" | "mutedUntil" | "bannedAt">) {
+  return canAccessWorkspace(user) && !isUserMuted(user) && !isUserBanned(user);
+}
+
+function getRoleLabel(role: UserRole) {
+  switch (role) {
+    case "owner":
+      return "Owner";
+    case "moderator":
+      return "Moderator";
+    default:
+      return "Участник";
+  }
+}
+
+function getApprovalLabel(status: ApprovalStatus) {
+  switch (status) {
+    case "pending":
+      return "Ожидает одобрения";
+    case "rejected":
+      return "Доступ отклонён";
+    default:
+      return "Одобрен";
+  }
+}
+
+function getNicknameStyle(user: Pick<AppUser, "accentColor" | "nicknameGlow">) {
+  const baseColor = user.accentColor || "#173247";
+  const glow = normalizeNicknameGlow(user.nicknameGlow);
+  const shadow =
+    glow === "strong"
+      ? `0 0 18px ${baseColor}88, 0 0 36px ${baseColor}44`
+      : glow === "soft"
+        ? `0 0 12px ${baseColor}44`
+        : "none";
+
+  return {
+    color: baseColor,
+    textShadow: shadow
+  } as const;
 }
 
 function normalizePhoneNumber(value: string) {
@@ -471,6 +599,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
         reject(error);
       }
     );
+    bio: storedOverride.bio?.trim() || existingProfile?.bio || "Участник Nexa."
   });
 }
 function readAuthCallbackMessage() {
@@ -579,6 +708,23 @@ function getProfileDefaults(user: SupabaseAuthUser) {
   ) || `user_${user.id.slice(0, 8)}`;
 
   return { fullName, username };
+}
+
+function getProfilePhoneDefault(user: SupabaseAuthUser) {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
+  const activeProvider = pickFirstText(appMetadata.provider);
+  const identityData = getIdentityData(user, activeProvider);
+
+  return (
+    pickFirstText(
+      user.phone,
+      metadata.phone,
+      metadata.phone_number,
+      identityData.phone,
+      identityData.phone_number
+    ) || undefined
+  );
 }
 
 function getProfileAvatarDefault(user: SupabaseAuthUser) {
@@ -720,7 +866,19 @@ function resolveDirectPeerUser(chat: ChatSummary, currentUserId: string, users: 
 
 function shouldRetryProfilesWithoutOptionalColumns(error: { message: string } | null | undefined) {
   const normalized = error?.message.toLowerCase() ?? "";
-  return normalized.includes("avatar_url") || normalized.includes("crypto_public_key");
+  return [
+    "avatar_url",
+    "crypto_public_key",
+    "approval_status",
+    "nickname_glow",
+    "allow_gifs",
+    "phone",
+    "birth_date",
+    "muted_until",
+    "banned_at",
+    "banned_by",
+    "ban_reason"
+  ].some((pattern) => normalized.includes(pattern));
 }
 
 function resolveDirectPeerUserByChatId(
@@ -818,14 +976,20 @@ async function sendDirectMessageViaSupabaseRpc(chat: ChatSummary, currentUser: A
 function buildAuthFallbackProfile(user: SupabaseAuthUser): AppUser {
   const { fullName, username } = getProfileDefaults(user);
   const avatarUrl = getProfileAvatarDefault(user);
+  const phone = getProfilePhoneDefault(user);
+  const isOwnerSeed = username === ownerUsername;
 
   return applyProfileOverride({
     id: user.id,
     email: user.email ?? undefined,
+    phone,
     name: fullName,
     username,
-    role: "student",
+    role: isOwnerSeed ? "owner" : "member",
+    approvalStatus: isOwnerSeed ? "approved" : "pending",
     accentColor: pickAccentColor(user.id),
+    nicknameGlow: "none",
+    allowGifs: true,
     avatarUrl,
     bio: "Участник Nexa."
   });
@@ -1001,12 +1165,21 @@ function mapProfileRow(row: SupabaseProfileRow): AppUser {
   return applyProfileOverride({
     id: row.id,
     email: row.email ?? undefined,
+    phone: row.phone ?? undefined,
     name: row.full_name,
     username: row.username,
-    role: row.role ?? "student",
+    role: normalizeUserRole(row.role),
+    approvalStatus: normalizeApprovalStatus(row.approval_status),
     accentColor: row.accent_color,
+    nicknameGlow: normalizeNicknameGlow(row.nickname_glow),
+    allowGifs: row.allow_gifs ?? true,
     bio: row.bio ?? "РЈС‡Р°СЃС‚РЅРёРє Nexa.",
     avatarUrl: row.avatar_url ?? undefined,
+    birthDate: row.birth_date ?? undefined,
+    mutedUntil: row.muted_until ?? undefined,
+    bannedAt: row.banned_at ?? undefined,
+    bannedBy: row.banned_by ?? undefined,
+    banReason: row.ban_reason ?? undefined,
     cryptoPublicKey: row.crypto_public_key ?? undefined
   });
 }
@@ -1017,12 +1190,21 @@ function mapPartialProfileRow(
   return applyProfileOverride({
     id: row.id,
     email: row.email ?? undefined,
+    phone: row.phone ?? undefined,
     name: row.full_name,
     username: row.username,
-    role: row.role ?? "student",
+    role: normalizeUserRole(row.role),
+    approvalStatus: normalizeApprovalStatus(row.approval_status),
     accentColor: row.accent_color,
+    nicknameGlow: normalizeNicknameGlow(row.nickname_glow),
+    allowGifs: row.allow_gifs ?? true,
     bio: row.bio ?? "Участник Nexa.",
     avatarUrl: row.avatar_url ?? undefined,
+    birthDate: row.birth_date ?? undefined,
+    mutedUntil: row.muted_until ?? undefined,
+    bannedAt: row.banned_at ?? undefined,
+    bannedBy: row.banned_by ?? undefined,
+    banReason: row.ban_reason ?? undefined,
     cryptoPublicKey: row.crypto_public_key ?? undefined
   });
 }
@@ -1089,12 +1271,12 @@ function saveDemoSessionUserId(userId: string | null) {
 
 function readProfileOverrides() {
   if (typeof window === "undefined") {
-    return {} as Record<string, Partial<Pick<AppUser, "name" | "avatarUrl">>>;
+    return {} as Record<string, StoredProfileOverride>;
   }
 
   try {
     const raw = window.localStorage.getItem(profileOverridesKey);
-    return raw ? (JSON.parse(raw) as Record<string, Partial<Pick<AppUser, "name" | "avatarUrl">>>) : {};
+    return raw ? (JSON.parse(raw) as Record<string, StoredProfileOverride>) : {};
   } catch {
     return {};
   }
@@ -1104,7 +1286,7 @@ function getStoredProfileOverride(userId: string) {
   return readProfileOverrides()[userId] ?? {};
 }
 
-function saveProfileOverride(userId: string, override: Partial<Pick<AppUser, "name" | "avatarUrl">>) {
+function saveProfileOverride(userId: string, override: StoredProfileOverride) {
   if (typeof window === "undefined") {
     return;
   }
@@ -1178,6 +1360,41 @@ function saveCachedDirectoryUsers(users: AppUser[]) {
   window.localStorage.setItem(directoryCacheKey, JSON.stringify(users.slice(0, 120)));
 }
 
+function readProfileNotes() {
+  if (typeof window === "undefined") {
+    return {} as Record<string, string>;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(profileNotesKey);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function getProfileNote(ownerId: string, targetUserId: string) {
+  return readProfileNotes()[`${ownerId}:${targetUserId}`] ?? "";
+}
+
+function saveProfileNote(ownerId: string, targetUserId: string, note: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const notes = readProfileNotes();
+  const key = `${ownerId}:${targetUserId}`;
+  const trimmed = note.trim();
+
+  if (trimmed) {
+    notes[key] = trimmed;
+  } else {
+    delete notes[key];
+  }
+
+  window.localStorage.setItem(profileNotesKey, JSON.stringify(notes));
+}
+
 function buildCachedWorkspace(workspace: WorkspaceData): WorkspaceData {
   const cachedMessagesByChat = Object.fromEntries(
     Object.entries(workspace.messagesByChat).map(([chatId, messages]) => [chatId, messages.slice(-16)])
@@ -1246,6 +1463,9 @@ function applyProfileOverride(user: AppUser) {
   return {
     ...user,
     name: override.name?.trim() || user.name,
+    username: normalizeUsername(override.username ?? user.username) || user.username,
+    bio: override.bio?.trim() || user.bio,
+    birthDate: override.birthDate ?? user.birthDate,
     avatarUrl: override.avatarUrl ?? user.avatarUrl
   } satisfies AppUser;
 }
@@ -1308,14 +1528,43 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
   const { fullName, username } = getProfileDefaults(user);
   const storedOverride = getStoredProfileOverride(user.id);
   const defaultAvatarUrl = getProfileAvatarDefault(user);
+  const defaultPhone = getProfilePhoneDefault(user);
+  const requestedUsername = normalizeUsername(storedOverride.username ?? username) || username;
+  const ownerSeed = requestedUsername === ownerUsername;
   const cryptoIdentity = await ensureStoredCryptoIdentity(user.id);
+  let existingProfile: Partial<SupabaseProfileRow> | null = null;
+  let existingError: { message: string } | null = null;
+  let supportsExtendedProfile = true;
+
+  ({ data: existingProfile, error: existingError } = await supabase
+    .from("profiles")
+    .select(supabaseProfileSelect)
+    .eq("id", user.id)
+    .maybeSingle());
+
+  if (shouldRetryProfilesWithoutOptionalColumns(existingError)) {
+    supportsExtendedProfile = false;
+    ({ data: existingProfile, error: existingError } = await supabase
+      .from("profiles")
+      .select(legacySupabaseProfileSelect)
+      .eq("id", user.id)
+      .maybeSingle());
+  }
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
   const basePayload = {
     id: user.id,
     email: user.email ?? null,
-    full_name: fullName,
-    username,
-    role: "student",
-    accent_color: pickAccentColor(user.id),
+    phone: existingProfile?.phone ?? defaultPhone ?? null,
+    full_name: storedOverride.name?.trim() || existingProfile?.full_name || fullName,
+    username: requestedUsername,
+    role: ownerSeed ? "owner" : normalizeUserRole(existingProfile?.role),
+    approval_status: ownerSeed ? "approved" : normalizeApprovalStatus(existingProfile?.approval_status ?? (existingProfile ? "approved" : "pending")),
+    accent_color: existingProfile?.accent_color ?? pickAccentColor(user.id),
+    nickname_glow: normalizeNicknameGlow(existingProfile?.nickname_glow),
+    allow_gifs: existingProfile?.allow_gifs ?? true,
     crypto_public_key: cryptoIdentity.publicKey,
     bio: "РЈС‡Р°СЃС‚РЅРёРє Nexa С‡РµСЂРµР· GitHub Pages + Supabase."
   };
@@ -1325,7 +1574,21 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
     .upsert(
       {
         ...basePayload,
-        avatar_url: storedOverride.avatarUrl ?? defaultAvatarUrl ?? null
+        avatar_url: storedOverride.avatarUrl ?? existingProfile?.avatar_url ?? defaultAvatarUrl ?? null,
+        phone: existingProfile?.phone ?? defaultPhone ?? null,
+        full_name: storedOverride.name?.trim() || existingProfile?.full_name || fullName,
+        username: requestedUsername,
+        role: ownerSeed ? "owner" : normalizeUserRole(existingProfile?.role),
+        approval_status: ownerSeed ? "approved" : normalizeApprovalStatus(existingProfile?.approval_status ?? (existingProfile ? "approved" : "pending")),
+        accent_color: existingProfile?.accent_color ?? pickAccentColor(user.id),
+        nickname_glow: normalizeNicknameGlow(existingProfile?.nickname_glow),
+        allow_gifs: existingProfile?.allow_gifs ?? true,
+        bio: storedOverride.bio?.trim() || existingProfile?.bio || "Участник Nexa.",
+        birth_date: storedOverride.birthDate ?? existingProfile?.birth_date ?? null,
+        muted_until: existingProfile?.muted_until ?? null,
+        banned_at: existingProfile?.banned_at ?? null,
+        banned_by: existingProfile?.banned_by ?? null,
+        ban_reason: existingProfile?.ban_reason ?? null
       },
       { onConflict: "id" }
     )
@@ -1347,11 +1610,20 @@ async function ensureSupabaseProfile(user: SupabaseAuthUser) {
   return applyProfileOverride({
     id: user.id,
     email: user.email ?? undefined,
-    name: storedOverride.name?.trim() || fullName,
-    username,
-    role: "student",
-    accentColor: pickAccentColor(user.id),
-    avatarUrl: storedOverride.avatarUrl ?? defaultAvatarUrl ?? undefined,
+    phone: existingProfile?.phone ?? defaultPhone ?? undefined,
+    name: storedOverride.name?.trim() || existingProfile?.full_name || fullName,
+    username: requestedUsername,
+    role: ownerSeed ? "owner" : normalizeUserRole(existingProfile?.role),
+    approvalStatus: ownerSeed ? "approved" : normalizeApprovalStatus(existingProfile?.approval_status ?? (existingProfile ? "approved" : "pending")),
+    accentColor: existingProfile?.accent_color ?? pickAccentColor(user.id),
+    nicknameGlow: normalizeNicknameGlow(existingProfile?.nickname_glow),
+    allowGifs: existingProfile?.allow_gifs ?? true,
+    avatarUrl: storedOverride.avatarUrl ?? existingProfile?.avatar_url ?? defaultAvatarUrl ?? undefined,
+    birthDate: storedOverride.birthDate ?? existingProfile?.birth_date ?? undefined,
+    mutedUntil: existingProfile?.muted_until ?? undefined,
+    bannedAt: existingProfile?.banned_at ?? undefined,
+    bannedBy: existingProfile?.banned_by ?? undefined,
+    banReason: existingProfile?.ban_reason ?? undefined,
     cryptoPublicKey: cryptoIdentity.publicKey,
     bio: "Участник Nexa."
   });
@@ -1403,14 +1675,14 @@ async function fetchSupabaseDirectoryUsers(currentUserId: string) {
 
   ({ data, error } = await supabase
     .from("profiles")
-    .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
+    .select(supabaseProfileSelect)
     .neq("id", currentUserId)
     .order("full_name", { ascending: true }));
 
   if (shouldRetryProfilesWithoutOptionalColumns(error)) {
     ({ data, error } = await supabase
       .from("profiles")
-      .select("id,email,full_name,username,role,accent_color,bio")
+      .select(legacySupabaseProfileSelect)
       .neq("id", currentUserId)
       .order("full_name", { ascending: true }));
   }
@@ -1526,13 +1798,13 @@ async function fetchSupabaseWorkspace(user: SupabaseAuthUser) {
 
   ({ data: profileRows, error: profileError } = await supabase
     .from("profiles")
-      .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
+      .select(supabaseProfileSelect)
     .in("id", memberIds.length ? memberIds : [user.id]));
 
   if (shouldRetryProfilesWithoutOptionalColumns(profileError)) {
     ({ data: profileRows, error: profileError } = await supabase
       .from("profiles")
-      .select("id,email,full_name,username,role,accent_color,bio")
+      .select(legacySupabaseProfileSelect)
       .in("id", memberIds.length ? memberIds : [user.id]));
   }
 
@@ -1815,14 +2087,14 @@ function App() {
 
         ({ data, error: profilesError } = await client
           .from("profiles")
-          .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
+          .select(supabaseProfileSelect)
           .neq("id", currentUserId)
           .order("full_name", { ascending: true }));
 
         if (shouldRetryProfilesWithoutOptionalColumns(profilesError)) {
           ({ data, error: profilesError } = await client
             .from("profiles")
-            .select("id,email,full_name,username,role,accent_color,bio")
+            .select(legacySupabaseProfileSelect)
             .neq("id", currentUserId)
             .order("full_name", { ascending: true }));
         }
@@ -2018,7 +2290,7 @@ function App() {
 
         ({ data, error: searchError } = await client
           .from("profiles")
-          .select("id,email,full_name,username,role,accent_color,bio,avatar_url,crypto_public_key")
+          .select(supabaseProfileSelect)
           .neq("id", workspace.currentUser.id)
           .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
           .limit(48));
@@ -2026,7 +2298,7 @@ function App() {
         if (shouldRetryProfilesWithoutOptionalColumns(searchError)) {
           ({ data, error: searchError } = await client
             .from("profiles")
-            .select("id,email,full_name,username,role,accent_color,bio")
+            .select(legacySupabaseProfileSelect)
             .neq("id", workspace.currentUser.id)
             .or(`full_name.ilike.${pattern},username.ilike.${pattern},bio.ilike.${pattern},email.ilike.${pattern}`)
             .limit(48));
@@ -2348,7 +2620,7 @@ function App() {
         setWorkspace((current) => (current ? applyIncomingMessage(current, message) : current));
 
         if (!usersById.has(message.authorId)) {
-          const { data } = await client.from("profiles").select("*").eq("id", message.authorId).single();
+          const { data } = await client.from("profiles").select(supabaseProfileSelect).eq("id", message.authorId).single();
           if (data) {
             setWorkspace((current) => {
               if (!current) {
